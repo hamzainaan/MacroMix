@@ -66,7 +66,7 @@ void print() { // TEMP
   printf("side %d;  ep %d;  castle %d\n", side, ep, castle);
 }
 
-int movegen(MList *mList, int caps) {
+void movegen(MList *mList, int caps) {
   if (mList) mList->count = 0;
   for (int src = 0; src < 120; src++) {
     int pce = board[src];
@@ -113,6 +113,35 @@ int movegen(MList *mList, int caps) {
         if (!(pceType & 4) && pceType != 2 && pceType != 1) break;
         dst += dir; 
       }
+    }
+  }
+}
+
+int attack(int sq, int col) {
+  for (int pceType = 1; pceType <= 6; pceType++) {
+    int pce = pceType | col;
+    if (pceType == 2) {
+      int direction = 16 * (1 - 2 * col);
+      for (int cap = -1; cap <= 1; cap += 2) {
+        int dst = sq + direction + cap;
+        if (!(dst & 0x88) && board[dst] == pce) return 1;
+      }
+    } else {
+      int slider = pceType & 0x04;
+      for (int d = 0; d < 8; d++) {
+        int dir = offsets[pceType][d];
+        if (dir == 0) break;
+        int dst = sq;
+        do {
+            dst += dir;
+            if (dst & 0x88) break;
+            int att = board[dst];
+            if (att != 0) {
+                if (att == pce) return 1;
+                break;
+            }
+        } while (slider);
+      } 
     }
   } return 0;
 }
