@@ -146,6 +146,44 @@ int attack(int sq, int col) {
   } return 0;
 }
 
+int make(Move *move) {
+  int src = move->src;
+  int dst = move->dst;
+  int pce = move->pce;
+  int pceType = pce & 7;
+  board[move->capSq] = 0;
+  board[src] = 0;
+  board[dst] = pce;
+  
+  if (pceType == 1 && ((src == 116) || (src == 4))) {
+    switch(dst) {
+      case 118:
+        board[117] = 13;
+        board[119] = 0;
+        break;
+      case 114:
+        board[115] = 13;
+        board[112] = 0;
+        break;
+      case 6:
+        board[5] = 21;
+        board[7] = 0;
+        break;
+      case 2:
+        board[3] = 21;
+        board[0] = 0;
+        break;
+    }
+  }
+  
+  int oldCastle = castle;
+  castle &= board[src + 8];
+  castle &= board[dst + 8];
+  if (pceType == 2 && ((dst >> 4) == (side == 8 ? 0 : 7))) {
+    board[dst] = move->prom | side;
+  }
+}
+
 
 /******************************************************************************/
 /*                               CECP Protocol                                */
