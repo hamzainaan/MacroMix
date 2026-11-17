@@ -132,9 +132,9 @@ int attack(int sq, int col) {
   for (int pceType = 1; pceType <= 6; pceType++) {
     int pce = pceType | col;
     if (pceType == 2) {
-      int direction = 16 * (1 - 2 * col);
+      int dir = ((side == 8) ? 16 : -16);
       for (int cap = -1; cap <= 1; cap += 2) {
-        int dst = sq + direction + cap;
+        int dst = sq + dir + cap;
         if (!(dst & 0x88) && board[dst] == pce) return 1;
       }
     } else {
@@ -186,7 +186,7 @@ void undo() {
   board[move.dst] = 0;
   board[move.src] = move.pce;
   board[move.capSq] = move.capPce;
-  if ((move.pce & 7) == 1 &&
+  /*if ((move.pce & 7) == 1 &&
      ((move.src == 116) || (move.src == 4))) {
     switch(move.dst) {
       case 118: board[119] = 13; board[117] = 0; break;
@@ -194,15 +194,33 @@ void undo() {
       case 6: board[7] = 21; board[5] = 0; break;
       case 2: board[0] = 21; board[3] = 0; break;
     }
-  } 
+  }*/
 }
-
+int caps = 0;
 int make(Move move) {
+  game[gamePly].move = move;
+  game[gamePly].side = side;
+  game[gamePly].ep = ep;
+  game[gamePly].castle = castle;
+  game[gamePly].hash = hash;
+  gamePly++;
   board[move.capSq] = 0;
   board[move.src] = 0;
   board[move.dst] = move.pce;
+  ep = -1;
+  if ((move.pce & 7) == 2) {
+    int srcRank = move.src >> 4;
+    int dstRank = move.dst >> 4;
+    if (
+      (srcRank == ((side == 8) ? 6 : 1)) &&
+      (dstRank == ((side == 8) ? 4 : 3))
+    ) ep = move.dst ^ 16;
+    //if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
+    //  board[move.dst] = move.prom | side;
+    //}
+  }
   
-  if ((move.pce & 7) == 1 &&
+  /*if ((move.pce & 7) == 1 &&
      ((move.src == 116) || (move.src == 4))) {
     switch(move.dst) {
       case 118:
@@ -214,28 +232,10 @@ int make(Move move) {
       case 2:
         board[3] = 21; board[0] = 0; break;
     }
-  }
+  }*/
   
-  game[gamePly].move = move;
-  game[gamePly].side = side;
-  game[gamePly].ep = ep;
-  game[gamePly].castle = castle;
-  game[gamePly].hash = hash;
-  gamePly++;
-
-  castle &= board[move.src + 8];
-  castle &= board[move.dst + 8];
-
-  ep = -1;
-  if ((move.pce & 7) == 2) {
-    if (
-      ((move.src >> 4) == ((side == 8) ? 6 : 1)) &&
-      ((move.dst >> 4) == ((side == 8) ? 4 : 3))
-    ) ep = move.dst ^ 16;
-    if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
-      board[move.dst] = move.prom | side;
-    }
-  }
+  //castle &= board[move.src + 8];
+  //castle &= board[move.dst + 8];
   
   side = 24 - side;
   
@@ -243,6 +243,8 @@ int make(Move move) {
     undo();
     return 0;
   }
+  
+  if (move.dst != move.capSq) {caps++;}
   
   setHash();
   return 1;
@@ -253,12 +255,53 @@ void perft(int depth) {
   MList mList; genMoves(&mList, 0);
   for (int i = 0; i < mList.count; i++) {
     Move move = mList.moves[i];
-    make(move);
+    if (make(move) == 0) continue;
     perft(depth - 1);
     undo();
   }
 }
 
+int get_time_ms() {
+    #ifdef WIN64
+        return GetTickCount ();
+    #else
+        struct timeval t;
+        gettimeofday (&t, NULL);
+        return t.tv_sec*1000 + t.tv_usec/1000;
+    #endif	
+}
+
+// Traverse all nodes for a given position
+void perft_test(int depth) {
+    // Generate moves
+    printf("\n      Performance test:\n\n");
+    int start_time = get_time_ms();
+    MList mList; genMoves(&mList, 0);
+    
+    // Play moves
+    for (int move_count = 0; move_count < mList.count; move_count++) {
+        Move move = mList.moves[move_count];
+        if (!make(move)) continue;
+        long cum_nodes = nodes;
+        perft(depth - 1);
+        long old_nodes = nodes - cum_nodes;
+        undo();
+        printf("    move %d:\t", move_count + 1);
+        printf("%c%c%c%c%c",
+          (move.src & 7) + 'a',
+          8 - ((move.src >> 4) & 7) + '0',
+          (move.dst & 7) + 'a',
+          8 - ((move.dst >> 4) & 7) + '0',
+          move.prom ? "---NBRQ-"[move.prom] : ' '
+        );
+        printf("\t%ld\n", old_nodes);
+    }
+    
+    // Print resutls
+    printf("\n      Depth: %d", depth);
+    printf("\n      Nodes: %ld", nodes);
+    printf("\n       Time: %d ms\n\n", get_time_ms() - start_time);
+}
 
 /******************************************************************************/
 /*                               CECP Protocol                                */
@@ -337,7 +380,7 @@ int main() {                                      /* Xboard / Winboard driver */
         // search move
       } continue;
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
-      if (gamePly > 0) undo(); continue;          /* Undo move if any         */
+      if (gamePly > 0) undo(); printb(); continue;/* Undo move if any         */
     }
     
     
@@ -346,26 +389,11 @@ int main() {                                      /* Xboard / Winboard driver */
     if (!strncmp(command, "perft", 5)) {          /* Perft test               */
       nodes = 0;                                  /* Reset node count         */
       int d = atoi(command + 6);                  /* Parse perft depth        */
-      printf("Perft depth: %d ", d); perft(d);    /* Run test                 */
-      printf("nodes: %d\n", nodes);               /* Print result             */                    
+      printf("Perft depth %d ", d); perft_test(d);    /* Run test                 */
+      //printf("nodes %d %d\n", nodes, caps);               /* Print result             */
+      continue;                  
     } if (!strcmp(command, "board")) {            /* Print board              */
-      /*MList mList; movegen(&mList, 0);
-      
-      for (int i = 0; i < mList.count; i++) {
-        Move move = mList.moves[i];
-        make(&move); //print(); getchar();
-        undo(&move); //print(); getchar();
-        printf("%c%c%c%c%c\n",
-          (move.src & 7) + 'a',
-          8 - ((move.src >> 4) & 7) + '0',
-          (move.dst & 7) + 'a',
-          8 - ((move.dst >> 4) & 7) + '0',
-          move.prom ? "---NBRQ-"[move.prom] : ' '
-        );
-      }*/
-      
-      printb(); continue;
-      
+      printb(); printf("IN CHECK: %d\n", inCheck(8)); continue;
     }
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
   return 0;                                       /* Exit program             */
@@ -373,5 +401,59 @@ int main() {                                      /* Xboard / Winboard driver */
 
 
 
+/* Actual d2d3 d7d5 e1d2 d5d4
 
+
+    move 1:	a2a3 	1
+    move 2:	a2a4 	1
+    move 3:	b2b3 	1
+    move 4:	b2b4 	1
+    move 5:	c2c3 	1
+    move 6:	c2c4 	1
+    
+    
+    move 7:	d2c3 	1
+    move 8:	d2e3 	1
+    
+    
+    
+    move 9:	d2e1 	1
+    move 10:	e2e3 	1
+    move 11:	e2e4 	1
+    move 12:	f2f3 	1
+    move 13:	f2f4 	1
+    move 14:	g2g3 	1
+    move 15:	g2g4 	1
+    move 16:	h2h3 	1
+    move 17:	h2h4 	1
+    move 18:	b1a3 	1
+    move 19:	b1c3 	1
+    move 20:	d1e1 	1
+    move 21:	g1f3 	1
+    move 22:	g1h3 	1
+    
+*/
+
+/*
+                 move 1:  a2a3     nodes: 1
+wukong.js:881    move 2:  a2a4     nodes: 1
+wukong.js:881    move 3:  b2b3     nodes: 1
+wukong.js:881    move 4:  b2b4     nodes: 1
+wukong.js:881    move 5:  g2g3     nodes: 1
+wukong.js:881    move 6:  g2g4     nodes: 1
+wukong.js:881    move 7:  c2c3     nodes: 1
+wukong.js:881    move 8:  c2c4     nodes: 1
+wukong.js:881    move 9:  f2f3     nodes: 1
+wukong.js:881    move 10: f2f4     nodes: 1
+wukong.js:881    move 11: e2e3     nodes: 1
+wukong.js:881    move 12: e2e4     nodes: 1
+wukong.js:881    move 13: h2h3     nodes: 1
+wukong.js:881    move 14: h2h4     nodes: 1
+wukong.js:881    move 15: b1a3     nodes: 1
+wukong.js:881    move 16: b1c3     nodes: 1
+wukong.js:881    move 17: g1f3     nodes: 1
+wukong.js:881    move 18: g1h3     nodes: 1
+wukong.js:881    move 19: d1e1     nodes: 1
+wukong.js:881    move 20: d2e1     nodes: 1
+*/
 
