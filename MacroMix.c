@@ -49,7 +49,16 @@ typedef struct {                                  /* ------------------------ */
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
 int nodes;                                        /* Number of positions      */ 
-int board[128], side, ep, castle, hash;           /* Board position & state   */
+int board[128] = {
+    21,  0,  0,  0, 17,  0,  0, 21,    7, 15, 15, 15,  3, 15, 15, 11,
+    18,  0, 18, 18, 22, 18, 20,  0,   15, 15, 15, 15, 15, 15, 15, 15,
+    20, 19,  0,  0, 18, 19, 18,  0,   15, 15, 15, 15, 15, 15, 15, 15,
+     0,  0,  0, 10, 11,  0,  0,  0,   15, 15, 15, 15, 15, 15, 15, 15,
+     0, 18,  0,  0, 10,  0,  0,  0,   15, 15, 15, 15, 15, 15, 15, 15,
+     0,  0, 11,  0,  0, 14,  0, 18,   15, 15, 15, 15, 15, 15, 15, 15,
+    10, 10, 10, 12, 12, 10, 10, 10,   15, 15, 15, 15, 15, 15, 15, 15,
+    13,  0,  0,  0,  9,  0,  0, 13,   13, 15, 15, 15, 12, 15, 15, 14
+}, side, ep, castle, hash;           /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /* ------------------------ */
@@ -75,6 +84,35 @@ void printb() { // TEMP
     } printf("\n");
   } printf("\n    a b c d e f g h\n\n");
   printf("side %d\nep %d\ncastle %d\nhash %d\ngamePly %d\n", side, ep, castle, hash, gamePly);
+}
+
+int attack(int sq, int col) {
+  for (int pceType = 1; pceType <= 6; pceType++) {
+    int pce = pceType | col;
+    if (pceType == 2) {
+      int dir = ((col == 8) ? 16 : -16);
+      for (int cap = -1; cap <= 1; cap += 2) {
+        int dst = sq + dir + cap;
+        if (!(dst & 0x88) && board[dst] == pce) return 1;
+      }
+    } else {
+      int slider = pceType & 0x04;
+      for (int d = 0; d < 8; d++) {
+        int dir = offsets[pceType][d];
+        if (dir == 0) break;
+        int dst = sq;
+        do {
+            dst += dir;
+            if (dst & 0x88) break;
+            int att = board[dst];
+            if (att != 0) {
+                if (att == pce) return 1;
+                break;
+            }
+        } while (slider);
+      } 
+    }
+  } return 0;
 }
 
 void genMoves(MList *mList, int caps) {
@@ -110,14 +148,20 @@ void genMoves(MList *mList, int caps) {
         } else if (pceType == 1) {
           if ((dir != 1) && (dir != -1)) break;
           if (dir == 1) {
-            if (board[src + 2]) break;
             if (side == 8 && !(castle & 1)) break;
             if (side == 16 && !(castle & 4)) break;
+            if (board[src + 1]) break;
+            if (board[src + 2]) break;
+            if (attack(src, 24 - side)) break;
+            if (attack(src + 1, 24 - side)) break;
           } if (dir == -1) {
-            if (board[src - 2]) break;
-            if (board[src - 3]) break;
             if (side == 8 && !(castle & 2)) break;
             if (side == 16 && !(castle & 8)) break;
+            if (board[src - 1]) break;
+            if (board[src - 2]) break;
+            if (board[src - 3]) break;
+            if (attack(src, 24 - side)) break;
+            if (attack(src - 1, 24 - side)) break;
           } if (src != ((side == 8) ? 116: 4)) break;
           if (abs(src-dst) > 1) break;
         } if (capPce & (24 - side)) break;
@@ -126,35 +170,6 @@ void genMoves(MList *mList, int caps) {
       }
     }
   }
-}
-
-int attack(int sq, int col) {
-  for (int pceType = 1; pceType <= 6; pceType++) {
-    int pce = pceType | col;
-    if (pceType == 2) {
-      int dir = ((side == 8) ? 16 : -16);
-      for (int cap = -1; cap <= 1; cap += 2) {
-        int dst = sq + dir + cap;
-        if (!(dst & 0x88) && board[dst] == pce) return 1;
-      }
-    } else {
-      int slider = pceType & 0x04;
-      for (int d = 0; d < 8; d++) {
-        int dir = offsets[pceType][d];
-        if (dir == 0) break;
-        int dst = sq;
-        do {
-            dst += dir;
-            if (dst & 0x88) break;
-            int att = board[dst];
-            if (att != 0) {
-                if (att == pce) return 1;
-                break;
-            }
-        } while (slider);
-      } 
-    }
-  } return 0;
 }
 
 int inCheck(int col) {
@@ -186,7 +201,7 @@ void undo() {
   board[move.dst] = 0;
   board[move.src] = move.pce;
   board[move.capSq] = move.capPce;
-  /*if ((move.pce & 7) == 1 &&
+  if ((move.pce & 7) == 1 &&
      ((move.src == 116) || (move.src == 4))) {
     switch(move.dst) {
       case 118: board[119] = 13; board[117] = 0; break;
@@ -194,9 +209,9 @@ void undo() {
       case 6: board[7] = 21; board[5] = 0; break;
       case 2: board[0] = 21; board[3] = 0; break;
     }
-  }*/
+  }
 }
-int caps = 0;
+
 int make(Move move) {
   game[gamePly].move = move;
   game[gamePly].side = side;
@@ -215,12 +230,12 @@ int make(Move move) {
       (srcRank == ((side == 8) ? 6 : 1)) &&
       (dstRank == ((side == 8) ? 4 : 3))
     ) ep = move.dst ^ 16;
-    //if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
-    //  board[move.dst] = move.prom | side;
-    //}
+    if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
+      board[move.dst] = move.prom | side;
+    }
   }
   
-  /*if ((move.pce & 7) == 1 &&
+  if ((move.pce & 7) == 1 &&
      ((move.src == 116) || (move.src == 4))) {
     switch(move.dst) {
       case 118:
@@ -232,10 +247,10 @@ int make(Move move) {
       case 2:
         board[3] = 21; board[0] = 0; break;
     }
-  }*/
+  }
   
-  //castle &= board[move.src + 8];
-  //castle &= board[move.dst + 8];
+  castle &= board[move.src + 8];
+  castle &= board[move.dst + 8];
   
   side = 24 - side;
   
@@ -243,8 +258,6 @@ int make(Move move) {
     undo();
     return 0;
   }
-  
-  if (move.dst != move.capSq) {caps++;}
   
   setHash();
   return 1;
@@ -256,8 +269,10 @@ void perft(int depth) {
   for (int i = 0; i < mList.count; i++) {
     Move move = mList.moves[i];
     if (make(move) == 0) continue;
+    //printb(); getchar();
     perft(depth - 1);
     undo();
+    //printb(); getchar();
   }
 }
 
@@ -322,23 +337,23 @@ int main() {                                      /* Xboard / Winboard driver */
           for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
             hashPiece[col][t][sq] = rand();       /* Init random hash number  */
       side = 8; ep = -1; castle = 15;             /* Init position state      */
-      for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
-        board[sq] = 15;                           /* Castling bits (KQkq)     */
-      } int white[8] = {                          /* White pieces             */
-        13, 11, 12, 14, 9, 12, 11, 13             /* R, N, B, Q, K, B, N, R   */
-      }; int i = 8; while (i--) {                 /* Loop over board files    */
-        board[i+112] = white[i];                  /* Set up white pieces      */
-        board[i+96] = 10;                         /* Set up white pawns       */
-        board[i+32] = 0; board[i+48] = 0;         /* Set up empty squares     */
-        board[i+64] = 0; board[i+80] = 0;         /* Set up empty squares     */
-        board[i+16] = 18;                         /* Set up black pawns       */
-        board[i] = board[i + 112] + 8;            /* Set up black pieces      */
-      } board[8] = 7;                             /* Black O-O-O castling     */
-        board[12] = 3;                            /* Black both castling      */
-        board[15] = 11;                           /* Black O-O castling       */
-        board[120] = 13;                          /* White O-O-O castling     */
-        board[124] = 12;                          /* White both castling      */
-        board[127] = 14;                          /* White O-O castling       */
+      //for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
+      //  board[sq] = 15;                           /* Castling bits (KQkq)     */
+      //} int white[8] = {                          /* White pieces             */
+      //  13, 11, 12, 14, 9, 12, 11, 13             /* R, N, B, Q, K, B, N, R   */
+      //}; int i = 8; while (i--) {                 /* Loop over board files    */
+      //  board[i+112] = white[i];                  /* Set up white pieces      */
+      //  board[i+96] = 10;                         /* Set up white pawns       */
+      //  board[i+32] = 0; board[i+48] = 0;         /* Set up empty squares     */
+      //  board[i+64] = 0; board[i+80] = 0;         /* Set up empty squares     */
+      //  board[i+16] = 18;                         /* Set up black pawns       */
+      //  board[i] = board[i + 112] + 8;            /* Set up black pieces      */
+      //} board[8] = 7;                             /* Black O-O-O castling     */
+      //  board[12] = 3;                            /* Black both castling      */
+      //  board[15] = 11;                           /* Black O-O castling       */
+      //  board[120] = 13;                          /* White O-O-O castling     */
+      //  board[124] = 12;                          /* White both castling      */
+      //  board[127] = 14;                          /* White O-O castling       */
         gamePly = 0;                              /* Reset game ply           */
         setHash();                                /* Hash position            */
         continue;                                 /* Process next command     */
@@ -383,77 +398,116 @@ int main() {                                      /* Xboard / Winboard driver */
       if (gamePly > 0) undo(); printb(); continue;/* Undo move if any         */
     }
     
-    
-    
     if (!strcmp(command, "quit")) break;          /* Terminate engine         */
     if (!strncmp(command, "perft", 5)) {          /* Perft test               */
       nodes = 0;                                  /* Reset node count         */
       int d = atoi(command + 6);                  /* Parse perft depth        */
       printf("Perft depth %d ", d); perft_test(d);    /* Run test                 */
-      //printf("nodes %d %d\n", nodes, caps);               /* Print result             */
+      //printf("nodes %d\n", nodes);               /* Print result             */
       continue;                  
     } if (!strcmp(command, "board")) {            /* Print board              */
-      printb(); printf("IN CHECK: %d\n", inCheck(8)); continue;
+      printb(); printf("IN CHECK %d\n", attack(117, 16)); continue;
     }
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
   return 0;                                       /* Exit program             */
 }
 
+/* e5f7 h3g2
 
 
-/* Actual d2d3 d7d5 e1d2 d5d4
 
 
-    move 1:	a2a3 	1
-    move 2:	a2a4 	1
-    move 3:	b2b3 	1
-    move 4:	b2b4 	1
-    move 5:	c2c3 	1
-    move 6:	c2c4 	1
-    
-    
-    move 7:	d2c3 	1
-    move 8:	d2e3 	1
-    
-    
-    
-    move 9:	d2e1 	1
-    move 10:	e2e3 	1
-    move 11:	e2e4 	1
-    move 12:	f2f3 	1
-    move 13:	f2f4 	1
-    move 14:	g2g3 	1
-    move 15:	g2g4 	1
-    move 16:	h2h3 	1
-    move 17:	h2h4 	1
-    move 18:	b1a3 	1
-    move 19:	b1c3 	1
-    move 20:	d1e1 	1
-    move 21:	g1f3 	1
-    move 22:	g1h3 	1
-    
+
+
+
+
+
+
+    move 11:	h8h6 	48
+    move 12:	h8h5 	48
+    move 13:	h8h4 	48
+    move 14:	c7c6 	49
+
+    move 16:	d7d6 	47
+    move 17:	e7f7 	42
+
+    move 19:	e7f8 	48
+    move 20:	e7d6 	47
+    move 21:	e7c5 	48
+    move 22:	g7f8 	48
+    move 23:	g7h6 	48
+    move 24:	a6b7 	48
+    move 25:	a6c8 	48
+    move 26:	a6b5 	47
+    move 27:	a6c4 	46
+    move 28:	a6d3 	46
+
+    move 30:	b6c8 	48
+    move 31:	b6c4 	46
+    move 32:	b6a4 	47
+    move 33:	b6d5 	48
+    move 34:	e6d5 	48
+    move 35:	e6e5 	46
+    move 36:	f6g8 	48
+    move 37:	f6g4 	46
+    move 38:	f6e4 	49
+    move 39:	f6h7 	48
+    move 40:	f6h5 	48
+    move 41:	f6d5 	48
+    move 42:	g6g5 	47
+    move 43:	b4b3 	49
+    move 44:	b4c3 	48
+    move 45:	h3g2 	47
+
+
 */
+
 
 /*
-                 move 1:  a2a3     nodes: 1
-wukong.js:881    move 2:  a2a4     nodes: 1
-wukong.js:881    move 3:  b2b3     nodes: 1
-wukong.js:881    move 4:  b2b4     nodes: 1
-wukong.js:881    move 5:  g2g3     nodes: 1
-wukong.js:881    move 6:  g2g4     nodes: 1
-wukong.js:881    move 7:  c2c3     nodes: 1
-wukong.js:881    move 8:  c2c4     nodes: 1
-wukong.js:881    move 9:  f2f3     nodes: 1
-wukong.js:881    move 10: f2f4     nodes: 1
-wukong.js:881    move 11: e2e3     nodes: 1
-wukong.js:881    move 12: e2e4     nodes: 1
-wukong.js:881    move 13: h2h3     nodes: 1
-wukong.js:881    move 14: h2h4     nodes: 1
-wukong.js:881    move 15: b1a3     nodes: 1
-wukong.js:881    move 16: b1c3     nodes: 1
-wukong.js:881    move 17: g1f3     nodes: 1
-wukong.js:881    move 18: g1h3     nodes: 1
-wukong.js:881    move 19: d1e1     nodes: 1
-wukong.js:881    move 20: d2e1     nodes: 1
-*/
 
+     move 1:  c7c6     nodes: 49
+
+wukong.js:881    move 3:  g6g5     nodes: 47
+wukong.js:881    move 4:  d7d6     nodes: 47
+wukong.js:881    move 5:  e6e5     nodes: 46
+wukong.js:881    move 6:  e6d5     nodes: 48
+wukong.js:881    move 7:  b4b3     nodes: 49
+wukong.js:881    move 8:  b4c3     nodes: 48
+wukong.js:881    move 9:  h3g2     nodes: 46
+wukong.js:881    move 10: b6c4     nodes: 46
+wukong.js:881    move 11: b6a4     nodes: 47
+wukong.js:881    move 12: b6d5     nodes: 48
+wukong.js:881    move 13: b6c8     nodes: 48
+wukong.js:881    move 14: f6g4     nodes: 46
+wukong.js:881    move 15: f6e4     nodes: 49
+wukong.js:881    move 16: f6h5     nodes: 48
+wukong.js:881    move 17: f6d5     nodes: 48
+wukong.js:881    move 18: f6g8     nodes: 48
+wukong.js:881    move 19: f6h7     nodes: 48
+wukong.js:881    move 20: g7h6     nodes: 48
+wukong.js:881    move 21: g7f8     nodes: 48
+wukong.js:881    move 22: a6b5     nodes: 47
+wukong.js:881    move 23: a6c4     nodes: 46
+wukong.js:881    move 24: a6d3     nodes: 46
+
+wukong.js:881    move 26: a6b7     nodes: 48
+wukong.js:881    move 27: a6c8     nodes: 48
+
+
+
+
+wukong.js:881    move 32: h8h6     nodes: 48
+wukong.js:881    move 33: h8h5     nodes: 48
+wukong.js:881    move 34: h8h4     nodes: 48
+
+
+wukong.js:881    move 37: e7f7     nodes: 42
+wukong.js:881    move 38: e7d6     nodes: 47
+wukong.js:881    move 39: e7c5     nodes: 48
+wukong.js:881    move 40: e7f8     nodes: 48
+
+
+
+
+
+*/
