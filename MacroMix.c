@@ -41,7 +41,15 @@ typedef struct {                                  /* ------------------------ */
   int count;                                      /* Move list length         */
 } MList;                                          /* ------------------------ */
                                                   /*                          */
-int board[128], side, ep, castle;                 /* Board position & state   */
+typedef struct {                                  /* ------------------------ */
+  Move move;                                      /* Game move                */
+  int side, ep, castle, hash;                     /* Position state snapshot  */
+} Game;                                           /* ------------------------ */
+                                                  /*                          */
+Game game[1024]; int gamePly;                     /* Game moves & current ply */
+int force;
+int board[128], side, ep, castle, hash;           /* Board position & state   */
+int hashPiece[2][7][120];                         /* Random hash numbers      */
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /* ------------------------ */
   { -16, -1, 16, 1, -17, -15, 17, 15 },           /* King                     */
@@ -52,7 +60,7 @@ int offsets[7][8] = {                             /* Piece move offsets       */
   { -16, -1, 16, 1, -17, -15, 17, 15 }            /* Queen                    */
 };                                                /* ------------------------ */
 
-void print() { // TEMP
+void printb() { // TEMP
   char p[] = ".kpnbrq--KPNBRQ";
   for (int rank = 0; rank < 8; rank++) {
     for (int file = 0; file < 16; file++) {
@@ -63,10 +71,21 @@ void print() { // TEMP
       }
     } printf("\n");
   } printf("\n    a b c d e f g h\n\n");
-  printf("side %d;  ep %d;  castle %d\n", side, ep, castle);
+  printf("side %d\nep %d\ncastle %d\nhash %d\ngamePly %d\n", side, ep, castle, hash, gamePly);
 }
 
-void movegen(MList *mList, int caps) {
+void setHash() {
+  hash = 0;
+  for (int sq = 0; sq < 120; sq++) {
+    if (sq & 0x88) continue;
+    int pce = board[sq], col = -1;
+    if (pce & 8) col = 0;
+    if (pce & 16) col = 1;
+    if (col >= 0) hash ^= hashPiece[col][pce & 7][sq];
+  }
+}
+
+void genMoves(MList *mList, int caps) {
   if (mList) mList->count = 0;
   for (int src = 0; src < 120; src++) {
     int pce = board[src];
@@ -146,59 +165,84 @@ int attack(int sq, int col) {
   } return 0;
 }
 
-int make(Move *move) {
-  board[move->capSq] = 0;
-  board[move->src] = 0;
-  board[move->dst] = move->pce;
-  
-  if ((move->pce & 7) == 1 && ((move->src == 116) || (move->src == 4))) {
-    switch(move->dst) {
-      case 118:
-        board[117] = 13;
-        board[119] = 0;
-        break;
-      case 114:
-        board[115] = 13;
-        board[112] = 0;
-        break;
-      case 6:
-        board[5] = 21;
-        board[7] = 0;
-        break;
-      case 2:
-        board[3] = 21;
-        board[0] = 0;
-        break;
-    }
+int inCheck(int col) {
+  for (int sq = 0; sq < 120; sq++) {
+    int pce = board[sq];
+    if ((pce & 7) == 1 && (pce & col))
+      return attack(sq, 24 - col);
   }
-  
-  int oldCastle = castle;
-  castle &= board[move->src + 8];
-  castle &= board[move->dst + 8];
-  if ((move->pce & 7) == 2 && ((move->dst >> 4) == (side == 8 ? 0 : 7))) {
-    board[move->dst] = move->prom | side;
-  }
-  
-  ep = -1;
-  if ((move->pce & 7) == 2) {
-    if (((move->src >> 4) == ((side == 8) ? 6 : 1)) &&
-        ((move->dst >> 4) == ((side == 8) ? 4 : 3))
-    ) ep = move->dst ^ 16;
-  }
-  
-  side = 24 - side;
 }
 
-void undo(Move *move) {
-  board[move->dst] = 0; board[move->src] = move->pce; board[move->capSq] = move->capPce;
-  if ((move->pce & 7) == 1 && ((move->src == 116) || (move->src == 4))) {
-    switch(move->dst) {
+void undo() {
+  gamePly--;
+  Move move = game[gamePly].move;
+  side = game[gamePly].side;
+  ep = game[gamePly].ep;
+  castle = game[gamePly].castle;
+  hash = game[gamePly].hash;
+  board[move.dst] = 0;
+  board[move.src] = move.pce;
+  board[move.capSq] = move.capPce;
+  if ((move.pce & 7) == 1 &&
+     ((move.src == 116) || (move.src == 4))) {
+    switch(move.dst) {
       case 118: board[119] = 13; board[117] = 0; break;
       case 114: board[112] = 13; board[115] = 0; break;
       case 6: board[7] = 21; board[5] = 0; break;
       case 2: board[0] = 21; board[3] = 0; break;
     }
-  } side = 24 - side;
+  } 
+}
+
+int make(Move move) {
+  board[move.capSq] = 0;
+  board[move.src] = 0;
+  board[move.dst] = move.pce;
+  
+  if ((move.pce & 7) == 1 &&
+     ((move.src == 116) || (move.src == 4))) {
+    switch(move.dst) {
+      case 118:
+        board[117] = 13; board[119] = 0; break;
+      case 114:
+        board[115] = 13; board[112] = 0; break;
+      case 6:
+        board[5] = 21; board[7] = 0; break;
+      case 2:
+        board[3] = 21; board[0] = 0; break;
+    }
+  }
+  
+  game[gamePly].move = move;
+  game[gamePly].side = side;
+  game[gamePly].ep = ep;
+  game[gamePly].castle = castle;
+  game[gamePly].hash = hash;
+  gamePly++;
+
+  castle &= board[move.src + 8];
+  castle &= board[move.dst + 8];
+
+  ep = -1;
+  if ((move.pce & 7) == 2) {
+    if (
+      ((move.src >> 4) == ((side == 8) ? 6 : 1)) &&
+      ((move.dst >> 4) == ((side == 8) ? 4 : 3))
+    ) ep = move.dst ^ 16;
+    if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
+      board[move.dst] = move.prom | side;
+    }
+  }
+  
+  side = 24 - side;
+  
+  if (inCheck(24 - side)) {
+    undo();
+    return 0;
+  }
+  
+  setHash();
+  return 1;
 }
 
 
@@ -216,6 +260,10 @@ int main() {                                      /* Xboard / Winboard driver */
     sscanf(input, "%31[^\n]", command);           /* Read user command        */
     if (!strcmp(command, "new")) {                /* Command "new"            */
       srand(0);                                   /* Set random seed          */
+      for (int col = 0; col < 2; col++)           /* Loop over color types    */
+        for (int t = 0; t < 7; t++)               /* Loop over piece types    */
+          for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
+            hashPiece[col][t][sq] = rand();       /* Init random hash number  */
       side = 8; ep = -1; castle = 15;             /* Init position state      */
       for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
         board[sq] = 15;                           /* Castling bits (KQkq)     */
@@ -234,17 +282,60 @@ int main() {                                      /* Xboard / Winboard driver */
         board[120] = 13;                          /* White O-O-O castling     */
         board[124] = 12;                          /* White both castling      */
         board[127] = 14;                          /* White O-O castling       */
+        gamePly = 0;                              /* Reset game ply           */
+        setHash();                                /* Hash position            */
         continue;                                 /* Process next command     */
+    } if (!strcmp(command, "white")) {            /* Command "white"          */
+      force = 0; side = 8; continue;              /* Computer plays black     */
+    } if (!strcmp(command, "black")) {            /* Command "black"          */
+      force = 0; side = 16; continue;             /* Computer plays white     */
+    } if (!strcmp(command, "force")) {            /* Command "force"          */
+      force = 1; continue;                        /* Computer plays neither   */
+    } if (command[0] >= 'a' &&                    /*                          */
+          command[0] <= 'z' &&                    /* If command is a move     */
+          command[1] >= '0' &&                    /* in format "e2e4"         */
+          command[1] <= '9') {                    /*                          */
+      int srcFile = command[0] - 'a';             /* Extract source file      */
+      int srcRank = 8 - (command[1] - '0');       /* Extract source rank      */
+      int dstFile = command[2] - 'a';             /* Extract target file      */
+      int dstRank = 8 - (command[3] - '0');       /* Extract target rank      */
+      int src = srcRank * 16 + srcFile;           /* Calculate source square  */
+      int dst = dstRank * 16 + dstFile;           /* Calculate target square  */
+      int prom = command[4] & 0x5f;               /* Extract promoted piece   */
+      if (prom) {                                 /* Promoted piece available */
+        switch (prom) {                           /* Process promoted piece   */
+          case 'Q': prom = 6;                     /* Promoted piece is Queen  */
+          case 'R': prom = 5;                     /* Promoted piece is Rook   */
+          case 'B': prom = 4;                     /* Promoted piece is Bishop */
+          case 'N': prom = 3;                     /* Promoted piece is Knight */
+          default: prom = 6;                      /* Queen is default         */
+        }                                         /*                          */
+      } MList mList; genMoves(&mList, 0);         /* Generate moves           */
+      for (int i = 0; i < mList.count; i++) {     /* Loop over moves          */
+        Move move = mList.moves[i];               /* Init move                */
+        if (src == move.src &&                    /*                          */
+            dst == move.dst &&                    /* User move is in the list */
+            prom == move.prom) {                  /*                          */
+          make(move); break;                      /* Try making a move        */
+        }
+      } printb();
+      if (force == 0) {
+        // search move
+      } continue;
+    } if (!strcmp(command, "undo")) {             /* Command "undo"           */
+      if (gamePly > 0) undo(); continue;          /* Undo move if any         */
     }
+    
+    
+    
     if (!strcmp(command, "quit")) break;          /* Terminate engine         */
-    if (!strcmp(command, "print")) {
-      print();                                    /* TEMP                     */
-      MList mList; movegen(&mList, 0);
+    if (!strcmp(command, "board")) {              /* Print board              */
+      /*MList mList; movegen(&mList, 0);
       
       for (int i = 0; i < mList.count; i++) {
         Move move = mList.moves[i];
-        make(&move); print(); getchar();
-        undo(&move); print(); getchar();
+        make(&move); //print(); getchar();
+        undo(&move); //print(); getchar();
         printf("%c%c%c%c%c\n",
           (move.src & 7) + 'a',
           8 - ((move.src >> 4) & 7) + '0',
@@ -252,7 +343,9 @@ int main() {                                      /* Xboard / Winboard driver */
           8 - ((move.dst >> 4) & 7) + '0',
           move.prom ? "---NBRQ-"[move.prom] : ' '
         );
-      }
+      }*/
+      
+      printb(); continue;
       
     }
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
