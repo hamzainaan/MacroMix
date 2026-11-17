@@ -147,16 +147,12 @@ int attack(int sq, int col) {
 }
 
 int make(Move *move) {
-  int src = move->src;
-  int dst = move->dst;
-  int pce = move->pce;
-  int pceType = pce & 7;
   board[move->capSq] = 0;
-  board[src] = 0;
-  board[dst] = pce;
+  board[move->src] = 0;
+  board[move->dst] = move->pce;
   
-  if (pceType == 1 && ((src == 116) || (src == 4))) {
-    switch(dst) {
+  if ((move->pce & 7) == 1 && ((move->src == 116) || (move->src == 4))) {
+    switch(move->dst) {
       case 118:
         board[117] = 13;
         board[119] = 0;
@@ -177,11 +173,32 @@ int make(Move *move) {
   }
   
   int oldCastle = castle;
-  castle &= board[src + 8];
-  castle &= board[dst + 8];
-  if (pceType == 2 && ((dst >> 4) == (side == 8 ? 0 : 7))) {
-    board[dst] = move->prom | side;
+  castle &= board[move->src + 8];
+  castle &= board[move->dst + 8];
+  if ((move->pce & 7) == 2 && ((move->dst >> 4) == (side == 8 ? 0 : 7))) {
+    board[move->dst] = move->prom | side;
   }
+  
+  ep = -1;
+  if ((move->pce & 7) == 2) {
+    if (((move->src >> 4) == ((side == 8) ? 6 : 1)) &&
+        ((move->dst >> 4) == ((side == 8) ? 4 : 3))
+    ) ep = move->dst ^ 16;
+  }
+  
+  side = 24 - side;
+}
+
+void undo(Move *move) {
+  board[move->dst] = 0; board[move->src] = move->pce; board[move->capSq] = move->capPce;
+  if ((move->pce & 7) == 1 && ((move->src == 116) || (move->src == 4))) {
+    switch(move->dst) {
+      case 118: board[119] = 13; board[117] = 0; break;
+      case 114: board[112] = 13; board[115] = 0; break;
+      case 6: board[7] = 21; board[5] = 0; break;
+      case 2: board[0] = 21; board[3] = 0; break;
+    }
+  } side = 24 - side;
 }
 
 
@@ -226,6 +243,8 @@ int main() {                                      /* Xboard / Winboard driver */
       
       for (int i = 0; i < mList.count; i++) {
         Move move = mList.moves[i];
+        make(&move); print(); getchar();
+        undo(&move); print(); getchar();
         printf("%c%c%c%c%c\n",
           (move.src & 7) + 'a',
           8 - ((move.src >> 4) & 7) + '0',
