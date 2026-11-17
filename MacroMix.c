@@ -46,8 +46,9 @@ typedef struct {                                  /* ------------------------ */
   int side, ep, castle, hash;                     /* Position state snapshot  */
 } Game;                                           /* ------------------------ */
                                                   /*                          */
-Game game[1024]; int gamePly;                     /* Game moves & current ply */
-int force;
+Game game[1024];                                  /* Game moves history       */
+int gamePly;                                      /* Game moves history ply   */
+int nodes;                                        /* Number of positions      */ 
 int board[128], side, ep, castle, hash;           /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int offsets[7][8] = {                             /* Piece move offsets       */
@@ -59,6 +60,8 @@ int offsets[7][8] = {                             /* Piece move offsets       */
   {-16, -1, 16, 1 },                              /* Rook                     */
   { -16, -1, 16, 1, -17, -15, 17, 15 }            /* Queen                    */
 };                                                /* ------------------------ */
+
+int force;                                        /* CECP variables           */
 
 void printb() { // TEMP
   char p[] = ".kpnbrq--KPNBRQ";
@@ -72,17 +75,6 @@ void printb() { // TEMP
     } printf("\n");
   } printf("\n    a b c d e f g h\n\n");
   printf("side %d\nep %d\ncastle %d\nhash %d\ngamePly %d\n", side, ep, castle, hash, gamePly);
-}
-
-void setHash() {
-  hash = 0;
-  for (int sq = 0; sq < 120; sq++) {
-    if (sq & 0x88) continue;
-    int pce = board[sq], col = -1;
-    if (pce & 8) col = 0;
-    if (pce & 16) col = 1;
-    if (col >= 0) hash ^= hashPiece[col][pce & 7][sq];
-  }
 }
 
 void genMoves(MList *mList, int caps) {
@@ -173,6 +165,17 @@ int inCheck(int col) {
   }
 }
 
+void setHash() {
+  hash = 0;
+  for (int sq = 0; sq < 120; sq++) {
+    if (sq & 0x88) continue;
+    int pce = board[sq], col = -1;
+    if (pce & 8) col = 0;
+    if (pce & 16) col = 1;
+    if (col >= 0) hash ^= hashPiece[col][pce & 7][sq];
+  }
+}
+
 void undo() {
   gamePly--;
   Move move = game[gamePly].move;
@@ -243,6 +246,17 @@ int make(Move move) {
   
   setHash();
   return 1;
+}
+
+void perft(int depth) {
+  if (depth == 0) { nodes++; return; }
+  MList mList; genMoves(&mList, 0);
+  for (int i = 0; i < mList.count; i++) {
+    Move move = mList.moves[i];
+    make(move);
+    perft(depth - 1);
+    undo();
+  }
 }
 
 
@@ -329,7 +343,12 @@ int main() {                                      /* Xboard / Winboard driver */
     
     
     if (!strcmp(command, "quit")) break;          /* Terminate engine         */
-    if (!strcmp(command, "board")) {              /* Print board              */
+    if (!strncmp(command, "perft", 5)) {          /* Perft test               */
+      nodes = 0;                                  /* Reset node count         */
+      int d = atoi(command + 6);                  /* Parse perft depth        */
+      printf("Perft depth: %d ", d); perft(d);    /* Run test                 */
+      printf("nodes: %d\n", nodes);               /* Print result             */                    
+    } if (!strcmp(command, "board")) {            /* Print board              */
       /*MList mList; movegen(&mList, 0);
       
       for (int i = 0; i < mList.count; i++) {
