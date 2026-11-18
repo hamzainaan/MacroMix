@@ -29,295 +29,277 @@
 /*                                Definitions                                 */
 /*                                                                            */
 /******************************************************************************/ 
-typedef struct {                                  /* ------------------------ */
+typedef struct {                                  /*                          */
   int src, dst, capSq;                            /* Move & captured squares  */
   int pce, capPce;                                /* Attacker & victim pieces */ 
   int prom;                                       /* Pawn promotion piece     */
   int score;                                      /* Score for move ordering  */
-} Move;                                           /* ------------------------ */
-                                                  /*                          */
-typedef struct {                                  /* ------------------------ */
+} Move;                                           /*                          */
+/******************************************************************************/
+typedef struct {                                  /*                          */
   Move moves[256];                                /* Moves in a list          */
   int count;                                      /* Move list length         */
-} MList;                                          /* ------------------------ */
-                                                  /*                          */
-typedef struct {                                  /* ------------------------ */
+} MList;                                          /*                          */
+/******************************************************************************/
+typedef struct {                                  /*                          */
   Move move;                                      /* Game move                */
   int side, ep, castle, hash;                     /* Position state snapshot  */
-} Game;                                           /* ------------------------ */
-                                                  /*                          */
+} Game;                                           /*                          */
+/******************************************************************************/
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
 int nodes;                                        /* Number of positions      */ 
-int board[128] = {
-    21,  0,  0,  0, 17,  0,  0, 21,    7, 15, 15, 15,  3, 15, 15, 11,
-    18,  0, 18, 18, 22, 18, 20,  0,   15, 15, 15, 15, 15, 15, 15, 15,
-    20, 19,  0,  0, 18, 19, 18,  0,   15, 15, 15, 15, 15, 15, 15, 15,
-     0,  0,  0, 10, 11,  0,  0,  0,   15, 15, 15, 15, 15, 15, 15, 15,
-     0, 18,  0,  0, 10,  0,  0,  0,   15, 15, 15, 15, 15, 15, 15, 15,
-     0,  0, 11,  0,  0, 14,  0, 18,   15, 15, 15, 15, 15, 15, 15, 15,
-    10, 10, 10, 12, 12, 10, 10, 10,   15, 15, 15, 15, 15, 15, 15, 15,
-    13,  0,  0,  0,  9,  0,  0, 13,   13, 15, 15, 15, 12, 15, 15, 14
-}, side, ep, castle, hash;           /* Board position & state   */
+int board[128], side, ep, castle, hash;           /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int offsets[7][8] = {                             /* Piece move offsets       */
-  { 0 },                                          /* ------------------------ */
+  { 0 },                                          /*                          */
   { -16, -1, 16, 1, -17, -15, 17, 15 },           /* King                     */
   { 15, 16, 17 },                                 /* Pawn                     */
   { -33, -31, 33, 31, -18, -14, 18, 14 },         /* Knight                   */
   { -17, -15, 17, 15 },                           /* Bishop                   */
   {-16, -1, 16, 1 },                              /* Rook                     */
   { -16, -1, 16, 1, -17, -15, 17, 15 }            /* Queen                    */
-};                                                /* ------------------------ */
-
+};                                                /*                          */
+/******************************************************************************/
 int force;                                        /* CECP variables           */
-
-void printb() { // TEMP
-  char p[] = ".kpnbrq--KPNBRQ";
-  for (int rank = 0; rank < 8; rank++) {
-    for (int file = 0; file < 16; file++) {
-      int sq = rank * 16 + file;
-      if (file == 0) printf(" %d  ", 8 - rank);
-      if (!(sq & 0x88)) {
-        printf("%c ", p[board[sq] & 15]);
-      }
-    } printf("\n");
-  } printf("\n    a b c d e f g h\n\n");
-  printf("side %d\nep %d\ncastle %d\nhash %d\ngamePly %d\n", side, ep, castle, hash, gamePly);
-}
-
-int attack(int sq, int col) {
-  for (int pceType = 1; pceType <= 6; pceType++) {
-    int pce = pceType | col;
-    if (pceType == 2) {
-      int dir = ((col == 8) ? 16 : -16);
-      for (int cap = -1; cap <= 1; cap += 2) {
-        int dst = sq + dir + cap;
-        if (!(dst & 0x88) && board[dst] == pce) return 1;
-      }
-    } else {
-      int slider = pceType & 0x04;
-      for (int d = 0; d < 8; d++) {
-        int dir = offsets[pceType][d];
-        if (dir == 0) break;
-        int dst = sq;
-        do {
-            dst += dir;
-            if (dst & 0x88) break;
-            int att = board[dst];
-            if (att != 0) {
-                if (att == pce) return 1;
-                break;
-            }
-        } while (slider);
-      } 
-    }
-  } return 0;
-}
-
-void genMoves(MList *mList, int caps) {
-  if (mList) mList->count = 0;
-  for (int src = 0; src < 120; src++) {
-    int pce = board[src];
-    if (!(pce & side) || (src & 0x88)) continue;
-    int pceType = pce & 7;
-    for (int i = 0; i < 8; i++) {
-      int dir = offsets[pceType][i];
-      if (dir == 0) break;
-      if (pce == 10) dir *= -1;
-      int dst = src + dir;
-      while (!(dst & 0x88)) {
-        int capSq = dst;
-        if (pceType == 2 && dst == ep) capSq ^= 16;
-        int capPce = board[capSq];
-        if (capPce & side) break;
-        if (pceType == 2) {
-          if (!((dst - src) & 7) && capPce) break;
-          if (((dst - src) & 7) && !capPce && capSq != ep) break;
-        } if (pceType == 2 && ((dst >> 4) == (side == 8 ? 0 : 7))) {
-          for (int prom = 6; prom > 2; prom--) {
-            mList->moves[mList->count++] = (Move) {
-              src, dst, capSq, pce, capPce, prom, 0
-            };
-          }
-        } else mList->moves[mList->count++] = (Move) {
-          src, dst, capSq, pce, capPce, 0, 0
-        };if (pceType == 2) {
-          if ((src >> 4) != ((side == 8) ? 6 : 1)) break;
-          if ((dst >> 4) != ((side == 8) ? 5 : 2)) break;
-        } else if (pceType == 1) {
-          if ((dir != 1) && (dir != -1)) break;
-          if (dir == 1) {
-            if (side == 8 && !(castle & 1)) break;
-            if (side == 16 && !(castle & 4)) break;
-            if (board[src + 1]) break;
-            if (board[src + 2]) break;
-            if (attack(src, 24 - side)) break;
-            if (attack(src + 1, 24 - side)) break;
-          } if (dir == -1) {
-            if (side == 8 && !(castle & 2)) break;
-            if (side == 16 && !(castle & 8)) break;
-            if (board[src - 1]) break;
-            if (board[src - 2]) break;
-            if (board[src - 3]) break;
-            if (attack(src, 24 - side)) break;
-            if (attack(src - 1, 24 - side)) break;
-          } if (src != ((side == 8) ? 116: 4)) break;
-          if (abs(src-dst) > 1) break;
-        } if (capPce & (24 - side)) break;
-        if (!(pceType & 4) && pceType != 2 && pceType != 1) break;
-        dst += dir; 
-      }
-    }
-  }
-}
-
-int inCheck(int col) {
-  for (int sq = 0; sq < 120; sq++) {
-    int pce = board[sq];
-    if ((pce & 7) == 1 && (pce & col))
-      return attack(sq, 24 - col);
-  }
-}
-
-void setHash() {
-  hash = 0;
-  for (int sq = 0; sq < 120; sq++) {
-    if (sq & 0x88) continue;
-    int pce = board[sq], col = -1;
-    if (pce & 8) col = 0;
-    if (pce & 16) col = 1;
-    if (col >= 0) hash ^= hashPiece[col][pce & 7][sq];
-  }
-}
-
-void undo() {
-  gamePly--;
-  Move move = game[gamePly].move;
-  side = game[gamePly].side;
-  ep = game[gamePly].ep;
-  castle = game[gamePly].castle;
-  hash = game[gamePly].hash;
-  board[move.dst] = 0;
-  board[move.src] = move.pce;
-  board[move.capSq] = move.capPce;
-  if ((move.pce & 7) == 1 &&
-     ((move.src == 116) || (move.src == 4))) {
-    switch(move.dst) {
-      case 118: board[119] = 13; board[117] = 0; break;
-      case 114: board[112] = 13; board[115] = 0; break;
-      case 6: board[7] = 21; board[5] = 0; break;
-      case 2: board[0] = 21; board[3] = 0; break;
-    }
-  }
-}
-
-int make(Move move) {
-  game[gamePly].move = move;
-  game[gamePly].side = side;
-  game[gamePly].ep = ep;
-  game[gamePly].castle = castle;
-  game[gamePly].hash = hash;
-  gamePly++;
-  board[move.capSq] = 0;
-  board[move.src] = 0;
-  board[move.dst] = move.pce;
-  ep = -1;
-  if ((move.pce & 7) == 2) {
-    int srcRank = move.src >> 4;
-    int dstRank = move.dst >> 4;
-    if (
-      (srcRank == ((side == 8) ? 6 : 1)) &&
-      (dstRank == ((side == 8) ? 4 : 3))
-    ) ep = move.dst ^ 16;
-    if ((move.dst >> 4) == (side == 8 ? 0 : 7)) {
-      board[move.dst] = move.prom | side;
-    }
-  }
-  
-  if ((move.pce & 7) == 1 &&
-     ((move.src == 116) || (move.src == 4))) {
-    switch(move.dst) {
-      case 118:
-        board[117] = 13; board[119] = 0; break;
-      case 114:
-        board[115] = 13; board[112] = 0; break;
-      case 6:
-        board[5] = 21; board[7] = 0; break;
-      case 2:
-        board[3] = 21; board[0] = 0; break;
-    }
-  }
-  
-  castle &= board[move.src + 8];
-  castle &= board[move.dst + 8];
-  
-  side = 24 - side;
-  
-  if (inCheck(24 - side)) {
-    undo();
-    return 0;
-  }
-  
-  setHash();
-  return 1;
-}
-
-void perft(int depth) {
-  if (depth == 0) { nodes++; return; }
-  MList mList; genMoves(&mList, 0);
-  for (int i = 0; i < mList.count; i++) {
-    Move move = mList.moves[i];
-    if (make(move) == 0) continue;
-    //printb(); getchar();
-    perft(depth - 1);
-    undo();
-    //printb(); getchar();
-  }
-}
-
-int get_time_ms() {
-    #ifdef WIN64
-        return GetTickCount ();
-    #else
-        struct timeval t;
-        gettimeofday (&t, NULL);
-        return t.tv_sec*1000 + t.tv_usec/1000;
-    #endif	
-}
-
-// Traverse all nodes for a given position
-void perft_test(int depth) {
-    // Generate moves
-    printf("\n      Performance test:\n\n");
-    int start_time = get_time_ms();
-    MList mList; genMoves(&mList, 0);
-    
-    // Play moves
-    for (int move_count = 0; move_count < mList.count; move_count++) {
-        Move move = mList.moves[move_count];
-        if (!make(move)) continue;
-        long cum_nodes = nodes;
-        perft(depth - 1);
-        long old_nodes = nodes - cum_nodes;
-        undo();
-        printf("    move %d:\t", move_count + 1);
-        printf("%c%c%c%c%c",
-          (move.src & 7) + 'a',
-          8 - ((move.src >> 4) & 7) + '0',
-          (move.dst & 7) + 'a',
-          8 - ((move.dst >> 4) & 7) + '0',
-          move.prom ? "---NBRQ-"[move.prom] : ' '
-        );
-        printf("\t%ld\n", old_nodes);
-    }
-    
-    // Print resutls
-    printf("\n      Depth: %d", depth);
-    printf("\n      Nodes: %ld", nodes);
-    printf("\n       Time: %d ms\n\n", get_time_ms() - start_time);
-}
-
+/******************************************************************************/
+/*                               Move generator                               */
+/*                                                                            */
+/******************************************************************************/
+void printBoard() {                               /* Print board              */
+  char p[] = ".kpnbrq--KPNBRQ";                   /* ASCII piece letters      */
+  for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
+    for (int file = 0; file < 16; file++) {       /* Loop over board files    */
+      int sq = rank * 16 + file;                  /* Calculate current square */
+      if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
+      if (!(sq & 0x88)) {                         /* Square is not offboard   */
+        printf("%c ", p[board[sq] & 15]);         /* Print board square       */
+      }                                           /*                          */
+    } printf("\n");                               /* Print new line           */
+  } printf("\n    a b c d e f g h\n\n");          /* Print files              */
+}                                                 /*                          */
+/******************************************************************************/
+int attack(int sq, int col) {                     /* Square attacked by color */
+  for (int pceType = 1; pceType < 7; pceType++) { /* Loop over piece types    */
+    int pce = pceType | col;                      /* Build piece              */
+    if (pceType == 2) {                           /* Attacked by a pawn       */
+      int dir = ((col == 8) ? 16 : -16);          /* Attack direction         */
+      for (int cap = -1; cap <= 1; cap += 2) {    /* Pawn attack offsets      */
+        int src = sq + dir + cap;                 /* Attack source square     */
+        if (!(src & 0x88) && board[src] == pce)   /* Pawn attacks square      */
+          return 1;                               /* Return true              */
+      }                                           /*                          */
+    } else {                                      /* Attacked by a piece      */
+      int slider = pceType & 0x04;                /* Slider or leaper piece   */
+      for (int d = 0; d < 8; d++) {               /* Piece attack offsets     */
+        int dir = offsets[pceType][d];            /* Attack direction         */
+        if (dir == 0) break;                      /* Skip   placeholders      */
+        int src = sq;                             /* Attack source square     */
+        do {                                      /* Follow attack ray        */
+            src += dir;                           /* Attack source square     */
+            if (src & 0x88) break;                /* Skip offboard squares    */
+            int att = board[src];                 /* Attacking piece          */
+            if (att != 0) {                       /* Not an empty square      */
+                if (att == pce)                   /* Piece attacks square     */
+                  return 1;                       /* Return true              */
+                break;                            /* Search no more           */
+            }                                     /*                          */
+        } while (slider);                         /* Repeat for slider pieces */
+      }                                           /*                          */
+    }                                             /*                          */
+  } return 0;                                     /* Square is not attacked   */
+}                                                 /*                          */
+/******************************************************************************/
+void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
+  if (mList) mList->count = 0;                    /* Reset move count         */
+  for (int src = 0; src < 120; src++) {           /* Loop over board squares  */
+    int pce = board[src];                         /* Find a piece             */
+    if (src & 0x88) continue;                     /* Skip offboard squares    */
+    if ((pce & side) == 0) continue;              /* Skip opponent's pieces   */
+    int pceType = pce & 7;                        /* Extract piece type       */
+    for (int i = 0; i < 8; i++) {                 /* Loop over move offsets   */
+      int dir = offsets[pceType][i];              /* Piece move direction     */
+      if (dir == 0) break;                        /* Skip placeholders        */
+      if (pce == 10) dir *= -1;                   /* White pawns direction    */
+      int dst = src + dir;                        /* Calculate target square  */
+      while (1) {                                 /* Loop over attack ray     */
+        if (dst & 0x88) break;                    /* Skip offboard targets    */
+        int capSq = dst;                          /* Capture square           */
+        if (pceType == 2 && dst == ep)            /* Pawn lands on en passant */
+          capSq ^= 16;                            /* Shift capture square     */
+        int capPce = board[capSq];                /* Captured piece           */
+        if (capPce & side) break;                 /* No own piece capture     */
+        if (pceType == 2) {                       /* Piece is a pawn          */
+          if (!((dst - src) & 7) && capPce)       /* Pawn moves only forward  */
+            break;                                /* Stop otherwise           */
+          if (((dst - src) & 7) &&                /* Pawn captures diagonally */
+              capPce == 0 && capSq != ep) break;  /* Stop otherwise           */
+        } if (pceType == 2 &&                     /* Piece is a pawn          */
+          ((dst >> 4) == (side == 8 ? 0 : 7))) {  /* Pawn is promoting        */
+          for (int prom = 6; prom > 2; prom--) {  /* Loop over promotoins     */
+          if (caps == 0)                          /* Generate all moves       */
+          mList->moves[mList->count++] = (Move) { /* Add all promotion        */
+            src, dst, capSq, pce, capPce, prom, 0 /* Move contents            */
+          }; else if (caps && capPce)             /* Generate only captures   */
+          mList->moves[mList->count++] = (Move) { /* Add only captures        */
+            src, dst, capSq, pce, capPce, prom, 0 /* Move contents            */
+          };}} else if (caps == 0)                /* Generate all moves       */
+          mList->moves[mList->count++] = (Move) { /* Add all moves            */
+            src, dst, capSq, pce, capPce, 0, 0    /* Move contents            */
+        }; else if (caps && capPce) {             /* Generate only captures   */
+          mList->moves[mList->count++] = (Move) { /* Add only captures        */
+            src, dst, capSq, pce, capPce, 0, 0    /* Move contents            */
+        };} if (pceType == 2) {                   /* Piece is a pawn          */
+          if ((src >> 4) !=                       /* 2nd or 7th source rank?  */
+             ((side == 8) ? 6 : 1)) break;        /* No double push if not    */
+          if ((dst >> 4) !=                       /* 3th or 6th target rank?  */
+             ((side == 8) ? 5 : 2)) break;        /* No extra push if not     */
+        } else if (pceType == 1) {                /* Piece is a king          */
+          if ((dir != 1) && (dir != -1)) break;   /* Castles only sideways    */
+          if (dir == 1) {                         /* King side castling       */
+            if (side == 8 && (castle & 1) == 0)   /* No white king side       */
+              break;                              /* Stop                     */
+            if (side == 16 && !(castle & 4))      /* No black king side       */
+              break;                              /* Stop                     */
+            if (board[src + 1]) break;            /* Stop if piece on F1/F8   */
+            if (board[src + 2]) break;            /* Stop if piece on G1/G8   */
+            if (attack(src, 24 - side)) break;    /* Stop if king is in check */
+            if (attack(src + 1, 24 - side))       /* Square F1/F8 is in check */
+              break;                              /* Stop                     */
+          } if (dir == -1) {                      /* Queen side castling      */
+            if (side == 8 && !(castle & 2))       /* No white queen side      */
+              break;                              /* Stop                     */
+            if (side == 16 && !(castle & 8))      /* No black queen side      */
+              break;                              /* Stop                     */
+            if (board[src - 1]) break;            /* Stop if piece on D1/D8   */
+            if (board[src - 2]) break;            /* Stop if piece in C1/C8   */
+            if (board[src - 3]) break;            /* Stop if piece on B1/B8   */
+            if (attack(src, 24 - side)) break;    /* Stop if king is in check */
+            if (attack(src - 1, 24 - side))       /* Square D1/D8 is in check */
+              break;                              /* Stop                     */
+          } if (src != ((side == 8) ? 116: 4))    /* King not on E1/E8        */
+            break;                                /* Stop                     */
+          if (abs(src-dst) > 1) break;            /* Only 2 squares in castle */
+        } if (capPce & (24 - side)) break;        /* Captured opponent piece  */
+        if ((pceType & 4) == 0 &&                 /* Piece is not a slider    */
+             pceType != 2 &&                      /* Piece is not a pawn      */
+             pceType != 1)                        /* Piece is not a king      */
+          break;                                  /* No slide along the ray   */
+        dst += dir;                               /* Sliders go next square   */
+      }                                           /*                          */
+    }                                             /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int inCheck(int col) {                            /* Is king in check ?       */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) continue;                      /* Skip offboard squares    */
+    int pce = board[sq];                          /* Find a piece             */
+    if ((pce & 7) == 1 && (pce & col))            /* King of side to move     */
+      return attack(sq, 24 - col);                /* Attacked by other side?  */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void setHash() {                                  /* Used for repetition      */
+  hash = 0;                                       /* Reset position hash key  */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) continue;                      /* Skip offboard squares    */
+    int pce = board[sq], col = -1;                /* Found piece, no color    */
+    if (pce & 8) col = 0;                         /* Piece is white           */
+    if (pce & 16) col = 1;                        /* Piece is black           */
+    if (col >= 0)                                 /* Piece is not empty       */
+      hash ^= hashPiece[col][pce & 7][sq];        /* Hash piece               */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void undo() {                                     /* Undo move on board       */
+  gamePly--;                                      /* Decrement game ply       */
+  Move move = game[gamePly].move;                 /* Load move from a game    */
+  side = game[gamePly].side;                      /* Load side to move        */
+  ep = game[gamePly].ep;                          /* Load en passant square   */
+  castle = game[gamePly].castle;                  /* Load castling rights     */
+  hash = game[gamePly].hash;                      /* Load hash key            */
+  board[move.dst] = 0;                            /* Empty target square      */
+  board[move.src] = move.pce;                     /* Move a piece back        */
+  board[move.capSq] = move.capPce;                /* Restore captured piece   */
+  if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
+     ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
+    switch(move.dst) {                            /* Where king castled       */
+      case 118:                                   /* Square G1                */
+        board[119] = 13; board[117] = 0; break;   /* Move rook from F1 to H1  */
+      case 114:                                   /* Square C1                */
+        board[112] = 13; board[115] = 0; break;   /* Move rook from D1 to A1  */
+      case 6:                                     /* Square G8                */
+        board[7] = 21; board[5] = 0; break;       /* Move rook from F8 to H8  */
+      case 2:                                     /* Square C8                */
+        board[0] = 21; board[3] = 0; break;       /* Move rook from D8 to A8  */
+    }                                             /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int make(Move move) {                             /* Make move on board       */
+  game[gamePly].move = move;                      /* Save move into a game    */
+  game[gamePly].side = side;                      /* Save side to move        */
+  game[gamePly].ep = ep;                          /* Save en passant square   */
+  game[gamePly].castle = castle;                  /* Save castling rights     */
+  game[gamePly].hash = hash;                      /* Save hash key            */
+  gamePly++;                                      /* Increment game ply       */
+  board[move.capSq] = 0;                          /* Empty captured square    */
+  board[move.src] = 0;                            /* Empty source square      */
+  board[move.dst] = move.pce;                     /* Move piece               */
+  ep = -1;                                        /* Reset en passant square  */
+  if ((move.pce & 7) == 2) {                      /* Piece is a pawn          */
+    int srcRank = move.src >> 4;                  /* Extract source rank      */
+    int dstRank = move.dst >> 4;                  /* Extract target rank      */
+    if (                                          /* Double pawn push         */
+      (srcRank == ((side == 8) ? 6 : 1)) &&       /* Source rank is 2nd / 7th */
+      (dstRank == ((side == 8) ? 4 : 3))          /* Target rank is 4th / 5th */
+    ) ep = move.dst ^ 16;                         /* Set en passant square    */
+    if ((move.dst >> 4) == (side == 8 ? 0 : 7)) { /* Pawn promotion           */
+      board[move.dst] = move.prom | side;         /* Promote to given piece   */
+    }                                             /*                          */
+  } if ((move.pce & 7) == 1 &&                    /* Piece is a king          */
+     ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
+    switch(move.dst) {                            /* Where king castled       */
+      case 118:                                   /* Square G1                */
+        board[117] = 13; board[119] = 0; break;   /* Move rook from H1 to F1  */
+      case 114:                                   /* Square C1                */
+        board[115] = 13; board[112] = 0; break;   /* Move rook from A1 to D1  */
+      case 6:                                     /* Square G8                */
+        board[5] = 21; board[7] = 0; break;       /* Move rook from H8 to F8  */
+      case 2:                                     /* Square C8                */
+        board[3] = 21; board[0] = 0; break;       /* Move rook from A8 to D8  */
+    }                                             /*                          */
+  } castle &= board[move.src + 8];                /* Update castling source   */
+  castle &= board[move.dst + 8];                  /* Update castling target   */
+  side = 24 - side;                               /* Swap the side to move    */
+  if (inCheck(24 - side)) {                       /* King in check after move */
+    undo();                                       /* Take move back           */
+    return 0;                                     /* Return illegal move      */
+  } setHash();                                    /* Update position hash     */
+  return 1;                                       /* Return legal move        */
+}                                                 /*                          */
+/******************************************************************************/
+int getTimeMs() {                                 /* Count time spent         */
+  #ifdef WIN64                                    /* On Windows               */
+    return GetTickCount ();                       /* Use GetTickCount()       */
+  #else                                           /* On Linux                 */
+    struct timeval t;                             /* Create time structure    */
+    gettimeofday (&t, NULL);                      /* Use gettimeofday()       */
+    return t.tv_sec*1000 + t.tv_usec/1000;        /* return time in ms        */
+  #endif	                                      /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void perft(int depth) {                           /* Move generator test      */
+  if (depth == 0) { nodes++; return; }            /* Count leaf nodes         */
+  MList mList; genMoves(&mList, 0);               /* Generate moves           */
+  for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */
+    Move move = mList.moves[i];                   /* Get current move         */
+    if (make(move) == 0) continue;                /* Make move, skip illegals */
+    perft(depth - 1);                             /* Traverse move tree       */
+    undo();                                       /* Take move back           */
+  }                                               /*                          */
+}                                                 /*                          */
 /******************************************************************************/
 /*                               CECP Protocol                                */
 /*                                                                            */
@@ -337,23 +319,23 @@ int main() {                                      /* Xboard / Winboard driver */
           for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
             hashPiece[col][t][sq] = rand();       /* Init random hash number  */
       side = 8; ep = -1; castle = 15;             /* Init position state      */
-      //for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
-      //  board[sq] = 15;                           /* Castling bits (KQkq)     */
-      //} int white[8] = {                          /* White pieces             */
-      //  13, 11, 12, 14, 9, 12, 11, 13             /* R, N, B, Q, K, B, N, R   */
-      //}; int i = 8; while (i--) {                 /* Loop over board files    */
-      //  board[i+112] = white[i];                  /* Set up white pieces      */
-      //  board[i+96] = 10;                         /* Set up white pawns       */
-      //  board[i+32] = 0; board[i+48] = 0;         /* Set up empty squares     */
-      //  board[i+64] = 0; board[i+80] = 0;         /* Set up empty squares     */
-      //  board[i+16] = 18;                         /* Set up black pawns       */
-      //  board[i] = board[i + 112] + 8;            /* Set up black pieces      */
-      //} board[8] = 7;                             /* Black O-O-O castling     */
-      //  board[12] = 3;                            /* Black both castling      */
-      //  board[15] = 11;                           /* Black O-O castling       */
-      //  board[120] = 13;                          /* White O-O-O castling     */
-      //  board[124] = 12;                          /* White both castling      */
-      //  board[127] = 14;                          /* White O-O castling       */
+      for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
+        board[sq] = 15;                           /* Castling bits (KQkq)     */
+      } int white[8] = {                          /* White pieces             */
+        13, 11, 12, 14, 9, 12, 11, 13             /* R, N, B, Q, K, B, N, R   */
+      }; int i = 8; while (i--) {                 /* Loop over board files    */
+        board[i+112] = white[i];                  /* Set up white pieces      */
+        board[i+96] = 10;                         /* Set up white pawns       */
+        board[i+32] = 0; board[i+48] = 0;         /* Set up empty squares     */
+        board[i+64] = 0; board[i+80] = 0;         /* Set up empty squares     */
+        board[i+16] = 18;                         /* Set up black pawns       */
+        board[i] = board[i + 112] + 8;            /* Set up black pieces      */
+      } board[8] = 7;                             /* Black O-O-O castling     */
+        board[12] = 3;                            /* Black both castling      */
+        board[15] = 11;                           /* Black O-O castling       */
+        board[120] = 13;                          /* White O-O-O castling     */
+        board[124] = 12;                          /* White both castling      */
+        board[127] = 14;                          /* White O-O castling       */
         gamePly = 0;                              /* Reset game ply           */
         setHash();                                /* Hash position            */
         continue;                                 /* Process next command     */
@@ -384,130 +366,30 @@ int main() {                                      /* Xboard / Winboard driver */
         }                                         /*                          */
       } MList mList; genMoves(&mList, 0);         /* Generate moves           */
       for (int i = 0; i < mList.count; i++) {     /* Loop over moves          */
-        Move move = mList.moves[i];               /* Init move                */
+        Move move = mList.moves[i];               /* Get current move         */
         if (src == move.src &&                    /*                          */
             dst == move.dst &&                    /* User move is in the list */
             prom == move.prom) {                  /*                          */
-          make(move); break;                      /* Try making a move        */
-        }
-      } printb();
-      if (force == 0) {
-        // search move
-      } continue;
+          make(move); break;                      /* Make move if legal       */
+        }                                         /*                          */
+      }                                           /*                          */
+      if (force == 0) {                           /* Search best move         */
+      } continue;                                 /*                          */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
-      if (gamePly > 0) undo(); printb(); continue;/* Undo move if any         */
-    }
-    
-    if (!strcmp(command, "quit")) break;          /* Terminate engine         */
-    if (!strncmp(command, "perft", 5)) {          /* Perft test               */
+      if (gamePly > 0) undo(); continue;          /* Undo move if any         */
+    } if (!strncmp(command, "perft", 5)) {        /* Perft test               */
+      int tick = getTimeMs();                     /* Start timer              */
       nodes = 0;                                  /* Reset node count         */
       int d = atoi(command + 6);                  /* Parse perft depth        */
-      printf("Perft depth %d ", d); perft_test(d);    /* Run test                 */
-      //printf("nodes %d\n", nodes);               /* Print result             */
-      continue;                  
-    } if (!strcmp(command, "board")) {            /* Print board              */
-      printb(); printf("IN CHECK %d\n", attack(117, 16)); continue;
-    }
-  } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
+      printf("Perft depth %d ", d); perft(d);     /* Run test                 */
+      int time = getTimeMs() - tick;              /* Stop timer               */
+      printf("nodes %d time %d\n", nodes, time);  /* Print result             */
+      continue;                                   /* Read next command        */
+    } if (!strcmp(command, "board")) {            /* Extra command "board"    */
+      printBoard(); continue;                     /* Print board to console   */
+    } if (!strcmp(command, "quit")) break;        /* Terminate engine         */
+  }                                               /*                          */
+  while (fgets(input, sizeof(input), stdin));     /* Read user input          */
   return 0;                                       /* Exit program             */
-}
-
-/* e5f7 h3g2
-
-
-
-
-
-
-
-
-
-
-    move 11:	h8h6 	48
-    move 12:	h8h5 	48
-    move 13:	h8h4 	48
-    move 14:	c7c6 	49
-
-    move 16:	d7d6 	47
-    move 17:	e7f7 	42
-
-    move 19:	e7f8 	48
-    move 20:	e7d6 	47
-    move 21:	e7c5 	48
-    move 22:	g7f8 	48
-    move 23:	g7h6 	48
-    move 24:	a6b7 	48
-    move 25:	a6c8 	48
-    move 26:	a6b5 	47
-    move 27:	a6c4 	46
-    move 28:	a6d3 	46
-
-    move 30:	b6c8 	48
-    move 31:	b6c4 	46
-    move 32:	b6a4 	47
-    move 33:	b6d5 	48
-    move 34:	e6d5 	48
-    move 35:	e6e5 	46
-    move 36:	f6g8 	48
-    move 37:	f6g4 	46
-    move 38:	f6e4 	49
-    move 39:	f6h7 	48
-    move 40:	f6h5 	48
-    move 41:	f6d5 	48
-    move 42:	g6g5 	47
-    move 43:	b4b3 	49
-    move 44:	b4c3 	48
-    move 45:	h3g2 	47
-
-
-*/
-
-
-/*
-
-     move 1:  c7c6     nodes: 49
-
-wukong.js:881    move 3:  g6g5     nodes: 47
-wukong.js:881    move 4:  d7d6     nodes: 47
-wukong.js:881    move 5:  e6e5     nodes: 46
-wukong.js:881    move 6:  e6d5     nodes: 48
-wukong.js:881    move 7:  b4b3     nodes: 49
-wukong.js:881    move 8:  b4c3     nodes: 48
-wukong.js:881    move 9:  h3g2     nodes: 46
-wukong.js:881    move 10: b6c4     nodes: 46
-wukong.js:881    move 11: b6a4     nodes: 47
-wukong.js:881    move 12: b6d5     nodes: 48
-wukong.js:881    move 13: b6c8     nodes: 48
-wukong.js:881    move 14: f6g4     nodes: 46
-wukong.js:881    move 15: f6e4     nodes: 49
-wukong.js:881    move 16: f6h5     nodes: 48
-wukong.js:881    move 17: f6d5     nodes: 48
-wukong.js:881    move 18: f6g8     nodes: 48
-wukong.js:881    move 19: f6h7     nodes: 48
-wukong.js:881    move 20: g7h6     nodes: 48
-wukong.js:881    move 21: g7f8     nodes: 48
-wukong.js:881    move 22: a6b5     nodes: 47
-wukong.js:881    move 23: a6c4     nodes: 46
-wukong.js:881    move 24: a6d3     nodes: 46
-
-wukong.js:881    move 26: a6b7     nodes: 48
-wukong.js:881    move 27: a6c8     nodes: 48
-
-
-
-
-wukong.js:881    move 32: h8h6     nodes: 48
-wukong.js:881    move 33: h8h5     nodes: 48
-wukong.js:881    move 34: h8h4     nodes: 48
-
-
-wukong.js:881    move 37: e7f7     nodes: 42
-wukong.js:881    move 38: e7d6     nodes: 47
-wukong.js:881    move 39: e7c5     nodes: 48
-wukong.js:881    move 40: e7f8     nodes: 48
-
-
-
-
-
-*/
+}                                                 /*                          */
+/******************************************************************************/
