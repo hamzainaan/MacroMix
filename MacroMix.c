@@ -64,9 +64,7 @@ int offsets[7][8] = {                             /* Piece move offsets       */
 /******************************************************************************/
 int force;                                        /* CECP variables           */
 /******************************************************************************/
-/*                              Evaluation tables                             */
-/*                                                                            */
-/******************************************************************************/
+int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
 int pst[7][128] = {{ 0 },                                                   /**/
   {    /* Kings in the opening */          /* Kings in the endgame */       /**/
     -30,-40,-40,-50,-50,-40,-40,-30,    -50,-40,-30,-20,-20,-30,-40,-50,    /**/
@@ -180,7 +178,7 @@ int attack(int sq, int col) {                     /* Square attacked by color */
 void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
   if (mList) mList->count = 0;                    /* Reset move count         */
   for (int src = 0; src < 120; src++) {           /* Loop over board squares  */
-    int pce = board[src];                         /* Find a piece             */
+    int pce = board[src];                         /* Get square contents      */
     if (src & 0x88) continue;                     /* Skip offboard squares    */
     if ((pce & side) == 0) continue;              /* Skip opponent's pieces   */
     int pceType = pce & 7;                        /* Extract piece type       */
@@ -261,7 +259,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
 int inCheck(int col) {                            /* Is king in check ?       */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) continue;                      /* Skip offboard squares    */
-    int pce = board[sq];                          /* Find a piece             */
+    int pce = board[sq];                          /* Get square contents      */
     if ((pce & 7) == 1 && (pce & col))            /* King of side to move     */
       return attack(sq, 24 - col);                /* Attacked by other side?  */
   }                                               /*                          */
@@ -271,7 +269,8 @@ void setHash() {                                  /* Used for repetition      */
   hash = 0;                                       /* Reset position hash key  */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) continue;                      /* Skip offboard squares    */
-    int pce = board[sq], col = -1;                /* Found piece, no color    */
+    int pce = board[sq];                          /* Get square contents      */
+    int col = -1;                                 /* Set no piece color       */
     if (pce & 8) col = 0;                         /* Piece is white           */
     if (pce & 16) col = 1;                        /* Piece is black           */
     if (col >= 0)                                 /* Piece is not empty       */
@@ -366,6 +365,41 @@ void perft(int depth) {                           /* Move generator test      */
     perft(depth - 1);                             /* Traverse move tree       */
     undo();                                       /* Take move back           */
   }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+/*                                 Evaluation                                 */
+/*                                                                            */
+/******************************************************************************/
+int eval() {                                      /* Static evaluation        */
+  int score = 0;                                  /* Reset static score       */
+  int matWhite = 0, matBlack = 0;
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) continue;                      /* Skip offboard square     */
+    int pce = board[sq];                          /* Get square contents      */
+    int pceType = pce & 7;                        /* Extract piece type       */
+    if (pceType == 1) continue;                   /* Skip kings               */
+    if (pce & 8) matWhite += material[pceType];   /* Count white pieces       */
+    if (pce & 16) matBlack += material[pceType];  /* Count black pieces       */
+  } for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
+    if (sq & 0x88) continue;                      /* Skip offboard square     */
+    int pce = board[sq];                          /* Get square contents      */
+    if (pce) {                                    /* Found a piece            */
+      int pceType = pce & 7;                      /* Extract piece type       */
+      int mat = material[pceType];                /* Material score           */
+      int pos;                                    /* Positional score         */
+      int s = sq;                                 /* Opening/Endgame square   */
+      if (pce & 8) {                              /* White piece              */
+        if (matWhite < 1200 && pceType == 1)      /* In an endgame            */
+          s += 8;                                 /* Use king endgame scores  */
+        pos = pst[pceType][s];                    /* White positional score   */
+      } if (pce & 16) {                           /* Black piece              */
+        if (matBlack < 1200 && pceType == 1)      /* In an endgame            */
+          s += 8;                                 /* Use king endgame scores  */
+        pos = pst[pceType][s ^ 112];              /* Black positional score   */
+      } int value = mat + pos;                    /* Total score              */
+      score += (pce & 8) ? value : -value;        /* Aggregate score          */
+    }                                             /*                          */
+  } return (side == 8) ? score : -score;          /* Side respective score    */
 }                                                 /*                          */
 /******************************************************************************/
 /*                               CECP Protocol                                */
