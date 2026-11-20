@@ -67,7 +67,7 @@ Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 /******************************************************************************/
-int force, tick, stop, sd = 63, time = 1000;      /* CECP control variables   */
+int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -457,7 +457,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (stop) return 0;                             /* Time is up, return       */
   nodes++;                                        /* Count searched positions */
   if ((nodes & 1023) == 0)                        /* Check time control       */
-    if ((getTimeMs() - tick) >= time) stop = 1;   /* Time is up, set stop     */
+    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
@@ -492,7 +492,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
   if ((nodes & 1023) == 0)                        /* Check time control       */
-    if ((getTimeMs() - tick) >= time) stop = 1;   /* Time is up, set stop     */
+    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   int reps = 0;                                   /* Position repetitions     */
   for (int i = gamePly - fifty; i < gamePly; i++) /* Loop over game history   */
@@ -577,7 +577,7 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strncmp(command, "protover", 8))       /* Command "protover"       */
       printf("feature done=1\n");                 /* Prevent GUI delay        */
     if (!strncmp(command, "time", 4)) {           /* Command "time"           */
-      time = (atoi(command + 5) * 10) / 30;       /* Set time control         */
+      st = (atoi(command + 5) * 10) / 30;         /* Set time control         */
       sd = 63; continue;                          /* "Infinite" search depth  */
     } if (!strcmp(command, "white")) {            /* Command "white"          */
       force = 0; side = 8; continue;              /* Computer plays white     */
@@ -586,11 +586,11 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "force")) {            /* Command "force"          */
       force = 1; continue;                        /* Computer plays neither   */
     } if (!strncmp(command, "st", 2)) {           /* Command "st"             */
-      time = atoi(command + 3);                   /* Fixed time search mode   */
+      st = atoi(command + 3);                     /* Fixed time search mode   */
       sd = 63; continue;                          /* "Infinite" search depth  */
     } if (!strncmp(command, "sd", 2)) {           /* Command "sd"             */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
-      time = 1e6; continue;                       /* "Infinite" search time   */
+      st = 1e6; continue;                         /* "Infinite" search time   */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       command[0] = 'a';                           /* Fake move using illegal  */
       command[1] = '8';                           /* coords, engine would     */
