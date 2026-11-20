@@ -267,7 +267,7 @@ int inCheck(int col) {                            /* Is king in check ?       */
     int pce = board[sq];                          /* Get square contents      */
     if ((pce & 7) == 1 && (pce & col))            /* King of side to move     */
       return attack(sq, 24 - col);                /* Attacked by other side?  */
-  }                                               /*                          */
+  } return 0;                                     /* Shouldn't get here       */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Used for repetition      */
@@ -636,7 +636,7 @@ int main() {                                      /* Xboard / Winboard driver */
           int s = search(d, 0, -50000, 50000);    /* Search best move         */
           if (stop) break;                        /* Time is up or game over  */
           pvMove = pvTable[0][0];                 /* Record last best move    */
-          printf("%d %d %d %ld ",                 /* Engine search output     */
+          printf("%d %d %d %d ",                  /* Engine search output     */
             d, s, getTimeMs() - tick, nodes);     /* depth/score/time/nodes   */
           for (int i = 0; i < pvLength[0]; i++) { /* Loop over PV line        */
             Move move = pvTable[0][i];            /* Get PV move              */
