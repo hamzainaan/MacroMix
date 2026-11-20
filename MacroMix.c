@@ -486,9 +486,8 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
 /******************************************************************************/
 int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   if (stop) return 0;                             /* Count searched positions */
+  int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
-  int moves = 0;                                  /* Legal moves flag         */
-  int check = 0;                                  /* King in check flag       */
   if (depth == 0)                                 /* Main search is done      */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
@@ -502,13 +501,14 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   if (ply && reps) return 0;                      /* 3 Fold repetition, draw  */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
-  if (check = inCheck(side)) depth++;             /* King in check, go deeper */
+  int check = inCheck(side);                      /* King in check flag       */
+  if (check) depth++;                             /* King in check, go deeper */  
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
   sortMoves(&mList, ply);                         /* Sort moves               */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
-    moves = 1;                                    /* Game is not over         */
+    legalMoves++;                                 /* Count legal moves        */
     score = -search(depth-1,ply+1,-beta,-alpha);  /* Negamax search           */
     undo();                                       /* Take move back           */
     if (stop) return 0;                           /* Time is up, return       */
@@ -528,7 +528,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
         pvTable[ply][n] = pvTable[ply + 1][n];    /* To current PV table ply  */
       pvLength[ply] = pvLength[ply + 1];          /* Update PV length         */
     }                                             /*                          */
-  } if (moves == 0) {                             /* No legal moves left      */
+  } if (legalMoves == 0) {                        /* No legal moves available */
     if (check) return -49000 + ply;               /* In check, checkmate      */
     else return 0;                                /* Not in check, stalemate  */
   } if (fifty >= 100) return 0;                   /* Fifty move draw          */
@@ -634,7 +634,7 @@ int main() {                                      /* Xboard / Winboard driver */
         Move pvMove;                              /* Init PV move holder      */
         for (int d = 1; d <= sd; d++) {           /* Iterative deepening      */
           int s = search(d, 0, -50000, 50000);    /* Search best move         */
-          if (stop || abs(s) > 48000) break;      /* Time is up or game over  */
+          if (stop) break;                        /* Time is up or game over  */
           pvMove = pvTable[0][0];                 /* Record last best move    */
           printf("%d %d %d %ld ",                 /* Engine search output     */
             d, s, getTimeMs() - tick, nodes);     /* depth/score/time/nodes   */
@@ -648,6 +648,7 @@ int main() {                                      /* Xboard / Winboard driver */
               "\0--nbrq"[move.prom]);             /* PV move promoted piece   */
             if (i < pvLength[0] - 1) printf(" "); /* Print separator          */
           } printf("\n");                         /* Print new line           */
+          if (abs(s) > 48000) break;              /* Stop if found mate       */
         } make(pvMove);                           /* Make last best PV move   */
         printf("move %c%c%c%c%c\n",               /* Report best move to GUI  */
         (pvMove.src & 7) + 'a',                   /* Best move source file    */
