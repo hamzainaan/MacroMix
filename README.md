@@ -23,6 +23,13 @@ a single CECP-compatible engine.
 - **Learn the fundamentals:** See how much playing strength can be squeezed out of a handful of well-understood techniques.
 - **A familiar foundation:** Think of it as TSCP-style search, paired with a simplified evaluation function and a compact move generator inspired by micro-Max.
 
+# How strong is it?
+Hopefully CCRL testing would get a more precise answer,
+but based on my tests it should be at least 1500 Elo
+
+# Games
+See **MacroMix-games.pgn**
+
 # How to compile it?
 Simly run **make** or the explicit command:
     gcc -O3 MacroMix.c -o MacroMix
