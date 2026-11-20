@@ -43,13 +43,13 @@ typedef struct {                                  /*                          */
 /******************************************************************************/
 typedef struct {                                  /*                          */
   Move move;                                      /* Game move                */
-  int side, ep, castle, hash;                     /* Position state snapshot  */
+  int side, ep, castle, fifty, hash;              /* Position state snapshot  */
 } Game;                                           /*                          */
 /******************************************************************************/
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
 int nodes;                                        /* Number of positions      */ 
-int board[128], side, ep, castle, hash;           /* Board position & state   */
+int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
@@ -289,6 +289,7 @@ void undo() {                                     /* Undo move on board       */
   side = game[gamePly].side;                      /* Load side to move        */
   ep = game[gamePly].ep;                          /* Load en passant square   */
   castle = game[gamePly].castle;                  /* Load castling rights     */
+  fifty = game[gamePly].fifty;                    /* Load fifty move count    */
   hash = game[gamePly].hash;                      /* Load hash key            */
   board[move.dst] = 0;                            /* Empty target square      */
   board[move.src] = move.pce;                     /* Move a piece back        */
@@ -313,6 +314,7 @@ int make(Move move) {                             /* Make move on board       */
   game[gamePly].side = side;                      /* Save side to move        */
   game[gamePly].ep = ep;                          /* Save en passant square   */
   game[gamePly].castle = castle;                  /* Save castling rights     */
+  game[gamePly].fifty = fifty;                    /* Save fifty move count    */
   game[gamePly].hash = hash;                      /* Save hash key            */
   gamePly++;                                      /* Increment game ply       */
   board[move.capSq] = 0;                          /* Empty captured square    */
@@ -343,6 +345,9 @@ int make(Move move) {                             /* Make move on board       */
     }                                             /*                          */
   } castle &= board[move.src + 8];                /* Update castling source   */
   castle &= board[move.dst + 8];                  /* Update castling target   */
+  if (move.capPce || (move.pce & 7) == 2)         /* On capture or pawn move  */
+    fifty = 0;                                    /* Reset fifty count        */
+  else fifty++;                                   /* Increment fifty move     */
   side = 24 - side;                               /* Swap the side to move    */
   if (inCheck(24 - side)) {                       /* King in check after move */
     undo();                                       /* Take move back           */
@@ -491,7 +496,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
     if ((getTimeMs() - tick) >= time) stop = 1;   /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   int reps = 0;                                   /* Position repetitions     */
-  for (int i = 0; i < gamePly; i++)               /* Loop over game history   */
+  for (int i = gamePly - fifty; i < gamePly; i++) /* Loop over game history   */
     if (game[i].hash == hash)                     /* Found current position   */
       reps++;                                     /* Increment repetitions    */
   if (ply && reps) return 0;                      /* 3 Fold repetition, draw  */
@@ -526,7 +531,8 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   } if (moves == 0) {                             /* No legal moves left      */
     if (check) return -49000 + ply;               /* In check, checkmate      */
     else return 0;                                /* Not in check, stalemate  */
-  } return alpha;                                 /*                          */
+  } if (fifty >= 100) return 0;                   /* Fifty move draw          */
+  return alpha;                                   /* Return best score        */
 }                                                 /*                          */
 /******************************************************************************/
 /*                               CECP Protocol                                */
@@ -546,7 +552,7 @@ int main() {                                      /* Xboard / Winboard driver */
         for (int t = 0; t < 7; t++)               /* Loop over piece types    */
           for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
             hashPiece[col][t][sq] = rand();       /* Init random hash number  */
-      side = 8; ep = -1; castle = 15;             /* Init position state      */
+      side = 8; ep = -1; castle = 15; fifty = 0;  /* Init position state      */
       for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
         board[sq] = 15;                           /* Castling bits (KQkq)     */
       } int white[8] = {                          /* White pieces             */
