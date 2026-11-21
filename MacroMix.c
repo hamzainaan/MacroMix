@@ -440,15 +440,17 @@ void sortMoves(MList *mList, int ply) {           /* Move scoring             */
       else move->score = histScores[              /* Other quiet moves        */
         board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
     }                                             /*                          */
-  } int count = mList->count;                     /* Move sorting             */
-  for (int mv1 = 0; mv1 < count - 1; mv1++) {     /* Loop over current moves  */
-    for (int mv2 = mv1 + 1; mv2 < count; mv2++) { /* Loop over next moves     */
-      if (mList->moves[mv1].score <               /* Current score            */
-          mList->moves[mv2].score) {              /* Less than next score     */
-        Move temp = mList->moves[mv1];            /* Create temp move         */
-        mList->moves[mv1] = mList->moves[mv2];    /* Sort higher score first  */
-        mList->moves[mv2] = temp;                 /* Sort lower score after   */
-      }                                           /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
+  int count = mList->count;                       /* Move sorting             */
+  for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
+    if (mList->moves[mv1].score <                 /* Current score            */
+        mList->moves[mv2].score) {                /* Less than next score     */
+      Move temp = mList->moves[mv1];              /* Create temp move         */
+      mList->moves[mv1] = mList->moves[mv2];      /* Sort higher score first  */
+      mList->moves[mv2] = temp;                   /* Sort lower score after   */
     }                                             /*                          */
   }                                               /*                          */
 }                                                 /*                          */
@@ -467,6 +469,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   MList mList; genMoves(&mList, 1);               /* Generate moves           */
   sortMoves(&mList, ply);                         /* Sort moves               */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
+    pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     int score = -quiesce(ply + 1, -beta, -alpha); /* Quiescence search        */
@@ -506,6 +509,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
   sortMoves(&mList, ply);                         /* Sort moves               */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
+    pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     legalMoves++;                                 /* Count legal moves        */
