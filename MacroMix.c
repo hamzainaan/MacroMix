@@ -356,6 +356,9 @@ int make(Move move) {                             /* Make move on board       */
   return 1;                                       /* Return legal move        */
 }                                                 /*                          */
 /******************************************************************************/
+/*                                   Perft                                    */
+/*                                                                            */
+/******************************************************************************/
 int getTimeMs() {                                 /* Count time spent         */
   #ifdef WIN64                                    /* On Windows               */
     return GetTickCount ();                       /* Use GetTickCount()       */
@@ -365,9 +368,6 @@ int getTimeMs() {                                 /* Count time spent         */
     return t.tv_sec*1000 + t.tv_usec/1000;        /* return time in ms        */
   #endif	                                      /*                          */
 }                                                 /*                          */
-/******************************************************************************/
-/*                                   Perft                                    */
-/*                                                                            */
 /******************************************************************************/
 void perft(int d) {                               /* Move generator test      */
   if (d == 0) { nodes++; return; }                /* Count leaf nodes         */
