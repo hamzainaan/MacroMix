@@ -151,7 +151,7 @@ void printBoard() {                               /* Print board              */
 }                                                 /*                          */
 /******************************************************************************/
 int attack(int sq, int col) {                     /* Square attacked by color */
-  for (int pceType = 1; pceType < 7; pceType++) { /* Loop over piece types    */
+  for (int pceType = 1; pceType < 6; pceType++) { /* Loop over piece types    */
     int pce = pceType | col;                      /* Build piece              */
     if (pceType == 2) {                           /* Attacked by a pawn       */
       int dir = ((col == 8) ? 16 : -16);          /* Attack direction         */
@@ -171,7 +171,8 @@ int attack(int sq, int col) {                     /* Square attacked by color */
             if (src & 0x88) break;                /* Skip offboard squares    */
             int att = board[src];                 /* Attacking piece          */
             if (att != 0) {                       /* Not an empty square      */
-                if (att == pce)                   /* Piece attacks square     */
+                if (att == pce ||                 /* Piece attacks square     */
+                    (slider && att == (6 | col))) /* or queen along the ray   */
                   return 1;                       /* Return true              */
                 break;                            /* Search no more           */
             }                                     /*                          */
