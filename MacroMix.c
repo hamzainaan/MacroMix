@@ -352,7 +352,7 @@ int make(Move move) {                             /* Make move on board       */
   if (inCheck(24 - side)) {                       /* King in check after move */
     undo();                                       /* Take move back           */
     return 0;                                     /* Return illegal move      */
-  } setHash();                                    /* Update position hash     */
+  }                                               /*                          */
   return 1;                                       /* Return legal move        */
 }                                                 /*                          */
 /******************************************************************************/
@@ -497,6 +497,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   if ((nodes & 1023) == 0)                        /* Check time control       */
     if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
+  setHash();                                      /* Update position hash     */
   int reps = 0;                                   /* Position repetitions     */
   for (int i = gamePly - fifty; i < gamePly; i++) /* Loop over game history   */
     if (game[i].hash == hash)                     /* Found current position   */
@@ -626,7 +627,7 @@ int main() {                                      /* Xboard / Winboard driver */
         if (src == move.src &&                    /*                          */
             dst == move.dst &&                    /* User move is in the list */
             prom == move.prom) {                  /*                          */
-          make(move); break;                      /* Make move if legal       */
+          setHash(); make(move); break;           /* Hash and make legal move */
         }                                         /*                          */
       } if (force == 0) {                         /* Search best move         */
         tick = getTimeMs();                       /* Start timer              */
