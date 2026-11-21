@@ -586,7 +586,7 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "force")) {            /* Command "force"          */
       force = 1; continue;                        /* Computer plays neither   */
     } if (!strncmp(command, "st", 2)) {           /* Command "st"             */
-      st = atoi(command + 3);                     /* Fixed time search mode   */
+      st = atoi(command + 3) * 1000;              /* Fixed time search mode   */
       sd = 63; continue;                          /* "Infinite" search depth  */
     } if (!strncmp(command, "sd", 2)) {           /* Command "sd"             */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
@@ -645,8 +645,9 @@ int main() {                                      /* Xboard / Winboard driver */
               8 - ((move.src >> 4) & 7) + '0',    /* PV move source rank      */
               (move.dst & 7) + 'a',               /* PV move target file      */
               8 - (move.dst >> 4 & 7) + '0',      /* PV move target rank      */
-              "\0--nbrq"[move.prom]);             /* PV move promoted piece   */
-            if (i < pvLength[0] - 1) printf(" "); /* Print separator          */
+              " --nbrq"[move.prom]);              /* PV move promoted piece   */
+            if (i < pvLength[0] - 1 && move.prom) /* Not last move, promotion */
+              printf(" ");                        /* Print separator          */
           } printf("\n");                         /* Print new line           */
           if (abs(s) > 48000) break;              /* Stop if found mate       */
         } make(pvMove);                           /* Make last best PV move   */
@@ -655,7 +656,7 @@ int main() {                                      /* Xboard / Winboard driver */
         8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
         (pvMove.dst & 7) + 'a',                   /* Best move target file    */
         8 - ((pvMove.dst >> 4) & 7) + '0',        /* Best move target rank    */
-        "\0--nbrq"[pvMove.prom]);                 /* Best move promoted piece */
+        " --nbrq"[pvMove.prom]);                  /* Best move promoted piece */
         fflush(stdout);                           /* Flush output             */
       } continue;                                 /* Process next command     */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
