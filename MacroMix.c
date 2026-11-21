@@ -184,7 +184,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
   if (mList) mList->count = 0;                    /* Reset move count         */
   for (int src = 0; src < 120; src++) {           /* Loop over board squares  */
     int pce = board[src];                         /* Get square contents      */
-    if (src & 0x88) continue;                     /* Skip offboard squares    */
+    if (src & 0x88) { src += 7; continue; }       /* Skip offboard squares    */
     if ((pce & side) == 0) continue;              /* Skip opponent's pieces   */
     int pceType = pce & 7;                        /* Extract piece type       */
     for (int i = 0; i < 8; i++) {                 /* Loop over move offsets   */
@@ -263,7 +263,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
 /******************************************************************************/
 int inCheck(int col) {                            /* Is king in check ?       */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) continue;                      /* Skip offboard squares    */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     int pce = board[sq];                          /* Get square contents      */
     if ((pce & 7) == 1 && (pce & col))            /* King of side to move     */
       return attack(sq, 24 - col);                /* Attacked by other side?  */
@@ -273,7 +273,7 @@ int inCheck(int col) {                            /* Is king in check ?       */
 void setHash() {                                  /* Used for repetition      */
   hash = 0;                                       /* Reset position hash key  */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) continue;                      /* Skip offboard squares    */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     int pce = board[sq];                          /* Get square contents      */
     int col = -1;                                 /* Set no piece color       */
     if (pce & 8) col = 0;                         /* Piece is white           */
@@ -388,7 +388,7 @@ int eval() {                                      /* Static evaluation        */
   int matWhite = 0, matBlack = 0;
   int kingWhite = 0, kingBlack = 0;               /* King squares             */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) continue;                      /* Skip offboard square     */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
     int pce = board[sq];                          /* Get square contents      */
     int pceType = pce & 7;                        /* Extract piece type       */
     if (pce == 9) kingWhite = sq;                 /* Remember white king      */
