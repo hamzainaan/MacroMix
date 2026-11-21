@@ -152,7 +152,7 @@ void printBoard() {                               /* Print board              */
 }                                                 /*                          */
 /******************************************************************************/
 int attack(int sq, int col) {                     /* Square attacked by color */
-  for (int pceType = 1; pceType < 6; pceType++) { /* Loop over piece types    */
+  for (int pceType = 1; pceType < 6; pceType++) { /* Loop over all but queen  */
     int pce = pceType | col;                      /* Build piece              */
     if (pceType == 2) {                           /* Attacked by a pawn       */
       int dir = ((col == 8) ? 16 : -16);          /* Attack direction         */
@@ -265,7 +265,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
 }                                                 /*                          */
 /******************************************************************************/
 int inCheck(int col) {                            /* Is king in check ?       */
-  return attack(kingSq[col >> 4], 24 - col);      /* Attacked by other side?  */
+  return attack(kingSq[col >> 4], 24 - col);      /* King attacked by enemy?  */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Used for repetition      */
@@ -396,14 +396,14 @@ int eval() {                                      /* Static evaluation        */
     if (pce == 9) kingWhite = sq;                 /* Remember white king      */
     if (pce == 17) kingBlack = sq;                /* Remember black king      */
     if (pceType == 1) continue;                   /* Skip kings               */
-    if (pce & 8) matWhite += material[pceType];   /* Count white pieces       */
-    if (pce & 16) matBlack += material[pceType];  /* Count black pieces       */
+    if (pce & 8) matWhite += material[pceType];   /* Count white material     */
+    if (pce & 16) matBlack += material[pceType];  /* Count black material     */
     if (pce & 8)                                  /* White piece              */
       score += pst[pceType][sq];                  /* White positional score   */
     if (pce & 16)                                 /* Black piece              */
       score -= pst[pceType][sq ^ 112];            /* Black positional score   */
-  } if (matWhite < 1200) kingWhite += 8;          /* Use king endgame scores  */
-  if (matBlack < 1200) kingBlack += 8;            /* Use king endgame scores  */
+  } if (matWhite < 1200) kingWhite += 8;          /* White king in an endgame */
+  if (matBlack < 1200) kingBlack += 8;            /* Black king in an endgame */
   score += matWhite + pst[1][kingWhite];          /* White material and king  */
   score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
   return (side == 8) ? score : -score;            /* Side respective score    */
@@ -438,13 +438,13 @@ void sortMoves(MList *mList, int ply) {           /* Move scoring             */
 }                                                 /*                          */
 /******************************************************************************/
 void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
-  int count = mList->count;                       /* Move sorting             */
+  int count = mList->count;                       /* Move list length         */
   for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
     if (mList->moves[mv1].score <                 /* Current score            */
         mList->moves[mv2].score) {                /* Less than next score     */
       Move temp = mList->moves[mv1];              /* Create temp move         */
-      mList->moves[mv1] = mList->moves[mv2];      /* Sort higher score first  */
-      mList->moves[mv2] = temp;                   /* Sort lower score after   */
+      mList->moves[mv1] = mList->moves[mv2];      /* Higher score goes first  */
+      mList->moves[mv2] = temp;                   /* Lower score goes after   */
     }                                             /*                          */
   }                                               /*                          */
 }                                                 /*                          */
@@ -461,7 +461,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (score >= beta) return beta;                 /* Beta cutoff              */
   if (score > alpha) alpha = score;               /* Update alpha score       */
   MList mList; genMoves(&mList, 1);               /* Generate moves           */
-  sortMoves(&mList, ply);                         /* Sort moves               */
+  sortMoves(&mList, ply);                         /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -503,7 +503,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
-  sortMoves(&mList, ply);                         /* Sort moves               */
+  sortMoves(&mList, ply);                         /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -635,7 +635,7 @@ int main() {                                      /* Xboard / Winboard driver */
         if (src == move.src &&                    /*                          */
             dst == move.dst &&                    /* User move is in the list */
             prom == move.prom) {                  /*                          */
-          setHash(); legal = make(move); break;   /* Hash and make legal move */
+          setHash(); legal = make(move); break;   /* Make move if legal       */
         }                                         /*                          */
       } if (!legal && strcmp(command, "a8a8")) {  /* Not a legal user move    */
         printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
