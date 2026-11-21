@@ -51,6 +51,7 @@ int gamePly;                                      /* Game moves history ply   */
 int nodes;                                        /* Number of positions      */ 
 int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
+int kingSq[2];                                    /* King squares by color    */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -262,12 +263,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
 }                                                 /*                          */
 /******************************************************************************/
 int inCheck(int col) {                            /* Is king in check ?       */
-  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
-    int pce = board[sq];                          /* Get square contents      */
-    if ((pce & 7) == 1 && (pce & col))            /* King of side to move     */
-      return attack(sq, 24 - col);                /* Attacked by other side?  */
-  } return 0;                                     /* Shouldn't get here       */
+  return attack(kingSq[col >> 4], 24 - col);      /* Attacked by other side?  */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Used for repetition      */
@@ -294,6 +290,8 @@ void undo() {                                     /* Undo move on board       */
   board[move.dst] = 0;                            /* Empty target square      */
   board[move.src] = move.pce;                     /* Move a piece back        */
   board[move.capSq] = move.capPce;                /* Restore captured piece   */
+  if ((move.pce & 7) == 1)                        /* Piece is a king          */
+    kingSq[side >> 4] = move.src;                 /* Restore king square      */
   if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
      ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
     switch(move.dst) {                            /* Where king castled       */
@@ -320,6 +318,8 @@ int make(Move move) {                             /* Make move on board       */
   board[move.capSq] = 0;                          /* Empty captured square    */
   board[move.src] = 0;                            /* Empty source square      */
   board[move.dst] = move.pce;                     /* Move piece               */
+  if ((move.pce & 7) == 1)                        /* Piece is a king          */
+    kingSq[side >> 4] = move.dst;                 /* Update king square       */
   ep = -1;                                        /* Reset en passant square  */
   if ((move.pce & 7) == 2) {                      /* Piece is a pawn          */
     int srcRank = move.src >> 4;                  /* Extract source rank      */
@@ -550,6 +550,7 @@ int main() {                                      /* Xboard / Winboard driver */
           for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
             hashPiece[col][t][sq] = rand();       /* Init random hash number  */
       side = 8; ep = -1; castle = 15; fifty = 0;  /* Init position state      */
+      kingSq[0] = 116; kingSq[1] = 4;             /* Init king squares        */
       for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
         board[sq] = 15;                           /* Castling bits (KQkq)     */
       } int white[8] = {                          /* White pieces             */
