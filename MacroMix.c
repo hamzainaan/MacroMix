@@ -648,7 +648,7 @@ int main() {                                      /* Xboard / Winboard driver */
         memset(pvLength,0,sizeof(pvLength));      /* Reset PV length table    */
         memset(killMoves,0,sizeof(killMoves));    /* Reset killers table      */
         memset(histScores,0,sizeof(histScores));  /* Reset history table      */
-        Move pvMove;                              /* Init PV move holder      */
+        Move pvMove = { 0 };                      /* Init PV move holder      */
         for (int d = 1; d <= sd; d++) {           /* Iterative deepening      */
           int s = search(d, 0, -50000, 50000);    /* Search best move         */
           if (stop) break;                        /* Time is up or game over  */
@@ -667,7 +667,8 @@ int main() {                                      /* Xboard / Winboard driver */
               printf(" ");                        /* Print separator          */
           } printf("\n");                         /* Print new line           */
           if (abs(s) > 48000) break;              /* Stop if found mate       */
-        } make(pvMove);                           /* Make last best PV move   */
+        } if (pvMove.pce == 0) continue;          /* No legal move to play    */
+        make(pvMove);                             /* Make last best PV move   */
         printf("move %c%c%c%c%.1s\n",             /* Report best move to GUI  */
         (pvMove.src & 7) + 'a',                   /* Best move source file    */
         8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
