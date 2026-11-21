@@ -629,13 +629,17 @@ int main() {                                      /* Xboard / Winboard driver */
           default: prom = 6;                      /* Queen is default         */
         }                                         /*                          */
       } MList mList; genMoves(&mList, 0);         /* Generate moves           */
+      int legal = 0;                              /* User move legality       */
       for (int i = 0; i < mList.count; i++) {     /* Loop over moves          */
         Move move = mList.moves[i];               /* Get current move         */
         if (src == move.src &&                    /*                          */
             dst == move.dst &&                    /* User move is in the list */
             prom == move.prom) {                  /*                          */
-          setHash(); make(move); break;           /* Hash and make legal move */
+          setHash(); legal = make(move); break;   /* Hash and make legal move */
         }                                         /*                          */
+      } if (!legal && strcmp(command, "a8a8")) {  /* Not a legal user move    */
+        printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
+        continue;                                 /* Do not search            */
       } if (force == 0) {                         /* Search best move         */
         tick = getTimeMs();                       /* Start timer              */
         stop = 0;                                 /* Reset stop flag          */
