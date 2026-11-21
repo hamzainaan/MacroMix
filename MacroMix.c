@@ -492,7 +492,8 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
   int reps = 0;                                   /* Position repetitions     */
-  for (int i = gamePly - fifty; i < gamePly; i++) /* Loop over game history   */
+  for (int i = gamePly - 2;                       /* Loop over game history   */
+       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
     if (game[i].hash == hash)                     /* Found current position   */
       reps++;                                     /* Increment repetitions    */
   if (ply && reps) return 0;                      /* 3 Fold repetition, draw  */
