@@ -69,6 +69,7 @@ int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
+int mps, inc;                                     /* Moves per session & inc  */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -576,8 +577,19 @@ int main() {                                      /* Xboard / Winboard driver */
         continue;                                 /* Process next command     */
     } if (!strncmp(command, "protover", 8))       /* Command "protover"       */
       printf("feature done=1\n");                 /* Prevent GUI delay        */
-    if (!strncmp(command, "time", 4)) {           /* Command "time"           */
-      st = (atoi(command + 5) * 10) / 30;         /* Set time control         */
+    if (!strncmp(command, "level", 5)) {          /* Command "level"          */
+      float sec = 0; mps = 0;                     /* Reset level parameters   */
+      sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
+             &mps, &sec);                         /* and time increment       */
+      inc = sec * 1000; continue;                 /* Increment in ms          */
+    } if (!strncmp(command, "time", 4)) {         /* Command "time"           */
+      int ms = atoi(command + 5) * 10;            /* Remaining time in ms     */
+      int mtg = 30;                               /* Default moves to go      */
+      if (mps)                                    /* Moves per session given  */
+        mtg = mps - (gamePly + 1) / 2 % mps;      /* Moves to time control    */
+      if (mtg > 30) mtg = 30;                     /* Limit moves to go        */
+      st = ms / mtg + inc;                        /* Set time control         */
+      if (st > ms / 2) st = ms / 2;               /* Keep safety time margin  */
       sd = 63; continue;                          /* "Infinite" search depth  */
     } if (!strcmp(command, "white")) {            /* Command "white"          */
       force = 0; side = 8; continue;              /* Computer plays white     */
