@@ -592,6 +592,7 @@ int main() {                                      /* Xboard / Winboard driver */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
       st = 1e6; continue;                         /* "Infinite" search time   */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
+      force = 0;                                  /* Leave force mode         */
       command[0] = 'a';                           /* Fake move using illegal  */
       command[1] = '8';                           /* coords, engine would     */
       command[2] = 'a';                           /* skip it and start        */
