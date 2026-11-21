@@ -418,18 +418,18 @@ void sortMoves(MList *mList, int ply) {           /* Move scoring             */
     int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
     int pvDst = pvTable[0][ply].dst;              /* Get PV move target       */
     if (move->src == pvSrc && move->dst == pvDst) /* Move is a PV move        */
-      move->score = 20000;                        /* Give it highest score    */
+      move->score = 2000000000;                   /* Give it highest score    */
     else if (move->capPce) {                      /* Capture move             */
       int att = board[move->src] & 7;             /* Get attacker piece       */
       int vic = move->capPce & 7;                 /* Get victim piece         */
-      move->score = vic * 100 - att + 10000;      /* MVV/LVA captures sort    */
+      move->score = vic*100 - att + 1000000000;   /* MVV/LVA captures sort    */
     } else {                                      /* Quiet move               */
       if (move->src == killMoves[0][ply].src &&   /*                          */
           move->dst == killMoves[0][ply].dst)     /* Move is 1st killer move  */
-        move->score = 9000;                       /* Score 1st killer move    */
+        move->score = 900000000;                  /* Score 1st killer move    */
       else if (killMoves[1][ply].src == move->src /*                          */
            && killMoves[1][ply].dst == move->dst) /* Move is 2nd killer move  */
-        move->score = 8000;                       /* Score 2nd killer move    */
+        move->score = 800000000;                  /* Score 2nd killer move    */
       else move->score = histScores[              /* Other quiet moves        */
         board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
     }                                             /*                          */
