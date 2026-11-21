@@ -654,7 +654,7 @@ int main() {                                      /* Xboard / Winboard driver */
           if (stop) break;                        /* Time is up or game over  */
           pvMove = pvTable[0][0];                 /* Record last best move    */
           printf("%d %d %d %d ",                  /* Engine search output     */
-            d, s, getTimeMs() - tick, nodes);     /* depth/score/time/nodes   */
+            d, s, (getTimeMs()-tick)/10, nodes);  /* depth/score/time/nodes   */
           for (int i = 0; i < pvLength[0]; i++) { /* Loop over PV line        */
             Move move = pvTable[0][i];            /* Get PV move              */
             printf("%c%c%c%c%.1s",                /* Print PV move            */
