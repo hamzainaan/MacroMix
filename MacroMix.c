@@ -610,10 +610,10 @@ int main() {                                      /* Xboard / Winboard driver */
       int prom = command[4] & 0x5f;               /* Extract promoted piece   */
       if (prom) {                                 /* Promoted piece available */
         switch (prom) {                           /* Process promoted piece   */
-          case 'Q': prom = 6;                     /* Promoted piece is Queen  */
-          case 'R': prom = 5;                     /* Promoted piece is Rook   */
-          case 'B': prom = 4;                     /* Promoted piece is Bishop */
-          case 'N': prom = 3;                     /* Promoted piece is Knight */
+          case 'Q': prom = 6; break;              /* Promoted piece is Queen  */
+          case 'R': prom = 5; break;              /* Promoted piece is Rook   */
+          case 'B': prom = 4; break;              /* Promoted piece is Bishop */
+          case 'N': prom = 3; break;              /* Promoted piece is Knight */
           default: prom = 6;                      /* Queen is default         */
         }                                         /*                          */
       } MList mList; genMoves(&mList, 0);         /* Generate moves           */
