@@ -33,3 +33,7 @@ See **MacroMix-games.pgn**
 # How to compile it?
 Simly run **make** or the explicit command:
     gcc -O3 MacroMix.c -o MacroMix
+
+# Credits
+ - Many thanks to Hamza Inaan for numerous bug fixes and
+   making search about 2x faster.

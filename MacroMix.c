@@ -68,7 +68,7 @@ Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 /******************************************************************************/
-int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
+int cli, force, tick, stop, sd = 63, st = 1000;   /* CECP control variables   */
 int mps, inc;                                     /* Moves per session & inc  */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
@@ -139,13 +139,22 @@ int pst[7][128] = {{ 0 },                                                   /**/
 /*                                                                            */
 /******************************************************************************/
 void printBoard() {                               /* Print board              */
+  printf("\n");                                   /* Print new line           */
   char p[] = ".kpnbrq--KPNBRQ";                   /* ASCII piece letters      */
+  char *u[] = { ".", "\u265a", "\u265f",          /* Unicode piece characters */
+  "\u265e", "\u265d", "\u265c", "\u265b",         /*                          */
+  "-", "-", "\u2654", "\u2659", "\u2658",         /*                          */
+  "\u2657", "\u2656", "\u2655" };                 /*                          */
   for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
     for (int file = 0; file < 16; file++) {       /* Loop over board files    */
       int sq = rank * 16 + file;                  /* Calculate current square */
       if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
       if (!(sq & 0x88)) {                         /* Square is not offboard   */
+        #ifdef WIN64                              /* Use ASCII on windows     */
         printf("%c ", p[board[sq] & 15]);         /* Print board square       */
+        #else                                     /* Use unicode otherwise    */
+        printf("%s ", u[board[sq] & 15]);         /* Print board square       */
+        #endif                                    /*                          */
       }                                           /*                          */
     } printf("\n");                               /* Print new line           */
   } printf("\n    a b c d e f g h\n\n");          /* Print files              */
@@ -387,7 +396,7 @@ void perft(int d) {                               /* Move generator test      */
 /******************************************************************************/
 int eval() {                                      /* Static evaluation        */
   int score = 0;                                  /* Reset static score       */
-  int matWhite = 0, matBlack = 0;
+  int matWhite = 0, matBlack = 0;                 /* White & black material   */
   int kingWhite = 0, kingBlack = 0;               /* King squares             */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
@@ -640,7 +649,8 @@ int main() {                                      /* Xboard / Winboard driver */
       } if (!legal && strcmp(command, "a8a8")) {  /* Not a legal user move    */
         printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
         continue;                                 /* Do not search            */
-      } if (force == 0) {                         /* Search best move         */
+      } if (cli) printBoard();                    /* Print board in CLI mode  */
+      if (force == 0) {                           /* Search best move         */
         tick = getTimeMs();                       /* Start timer              */
         stop = 0;                                 /* Reset stop flag          */
         nodes = 0;                                /* Reset position count     */
@@ -669,6 +679,7 @@ int main() {                                      /* Xboard / Winboard driver */
           if (abs(s) > 48000) break;              /* Stop if found mate       */
         } if (pvMove.pce == 0) continue;          /* No legal move to play    */
         make(pvMove);                             /* Make last best PV move   */
+        if (cli) printBoard();                    /* Print board in CLI mode  */
         printf("move %c%c%c%c%.1s\n",             /* Report best move to GUI  */
         (pvMove.src & 7) + 'a',                   /* Best move source file    */
         8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
@@ -679,6 +690,7 @@ int main() {                                      /* Xboard / Winboard driver */
       } continue;                                 /* Process next command     */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
       if (gamePly > 0) undo(); continue;          /* Undo move if any         */
+      if (cli) printBoard();                      /* Print board in CLI mode  */
     } if (!strncmp(command, "perft", 5)) {        /* Perft test               */
       tick = getTimeMs();                         /* Start timer              */
       nodes = 0;                                  /* Reset node count         */
@@ -689,6 +701,10 @@ int main() {                                      /* Xboard / Winboard driver */
       continue;                                   /* Read next command        */
     } if (!strcmp(command, "board")) {            /* Extra command "board"    */
       printBoard(); continue;                     /* Print board to console   */
+    } if (!strcmp(command, "cli")) {              /* CLI play mode            */
+      cli ^= 1; char* st = cli ? "ON" : "OFF";    /* Toggle CLI mode          */
+      printf("CLI mode is %s\n", st);             /* Print CLI mode status    */
+      printBoard();                               /* Print board to console   */
     } if (!strcmp(command, "quit")) break;        /* Terminate engine         */
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
   return 0;                                       /* Exit program             */
