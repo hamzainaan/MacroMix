@@ -689,8 +689,8 @@ int main() {                                      /* Xboard / Winboard driver */
         fflush(stdout);                           /* Flush output             */
       } continue;                                 /* Process next command     */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
-      if (gamePly > 0) undo(); continue;          /* Undo move if any         */
-      if (cli) printBoard();                      /* Print board in CLI mode  */
+      if (gamePly > 0) undo();                    /* Undo move if any         */
+      if (cli) printBoard(); continue;            /* Print board in CLI mode  */
     } if (!strncmp(command, "perft", 5)) {        /* Perft test               */
       tick = getTimeMs();                         /* Start timer              */
       nodes = 0;                                  /* Reset node count         */
