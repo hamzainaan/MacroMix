@@ -68,8 +68,8 @@ Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 /******************************************************************************/
-int cli, force, tick, stop, sd = 63, st = 1000;   /* CECP control variables   */
-int mps, inc;                                     /* Moves per session & inc  */
+int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
+int cli = 1, post = 0, mps, inc;                  /*                          */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -555,7 +555,11 @@ int main() {                                      /* Xboard / Winboard driver */
   do {                                            /* User command loop        */
     char command[32] = { 0 };                     /* User command storage     */                 
     sscanf(input, "%31[^\n]", command);           /* Read user command        */
-    if (!strcmp(command, "new")) {                /* Command "new"            */
+    if (!strcmp(command, "xboard")) {             /* Command "xboard"         */
+      cli = 0; post = 1; continue;                /* Print PV by default      */
+    } if (!strncmp(command, "protover", 8)) {     /* Command "protover"       */
+      printf("feature done=1\n");                 /* Prevent GUI delay        */
+    } if (!strcmp(command, "new")) {              /* Command "new"            */
       srand(0);                                   /* Set random seed          */
       for (int col = 0; col < 2; col++)           /* Loop over color types    */
         for (int t = 0; t < 7; t++)               /* Loop over piece types    */
@@ -583,10 +587,9 @@ int main() {                                      /* Xboard / Winboard driver */
         gamePly = 0;                              /* Reset game ply           */
         force = 0;                                /* Reset force mode         */
         setHash();                                /* Hash position            */
+        if (cli) printBoard();                    /* Print board to console   */
         continue;                                 /* Process next command     */
-    } if (!strncmp(command, "protover", 8))       /* Command "protover"       */
-      printf("feature done=1\n");                 /* Prevent GUI delay        */
-    if (!strncmp(command, "level", 5)) {          /* Command "level"          */
+    } if (!strncmp(command, "level", 5)) {        /* Command "level"          */
       float sec = 0; mps = 0;                     /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
              &mps, &sec);                         /* and time increment       */
@@ -612,6 +615,10 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strncmp(command, "sd", 2)) {           /* Command "sd"             */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
       st = 1e6; continue;                         /* "Infinite" search time   */
+    } if (!strcmp(command, "post")) {             /* Command "post"           */
+      post = 1; continue;                         /* Set print PV flag        */
+    } if (!strcmp(command, "nopost")) {           /* Command "nopost"         */
+      post = 0; continue;                         /* Unset print PV flag      */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
       command[0] = 'a';                           /* Fake move using illegal  */
@@ -663,7 +670,7 @@ int main() {                                      /* Xboard / Winboard driver */
           int s = search(d, 0, -50000, 50000);    /* Search best move         */
           if (stop) break;                        /* Time is up or game over  */
           pvMove = pvTable[0][0];                 /* Record last best move    */
-          printf("%d %d %d %d ",                  /* Engine search output     */
+          if (post) { printf("%d %d %d %d ",      /* Engine search output     */
             d, s, (getTimeMs()-tick)/10, nodes);  /* depth/score/time/nodes   */
           for (int i = 0; i < pvLength[0]; i++) { /* Loop over PV line        */
             Move move = pvTable[0][i];            /* Get PV move              */
@@ -676,16 +683,17 @@ int main() {                                      /* Xboard / Winboard driver */
             if (i < pvLength[0] - 1)              /* Not the last PV move     */
               printf(" ");                        /* Print separator          */
           } printf("\n");                         /* Print new line           */
-          if (abs(s) > 48000) break;              /* Stop if found mate       */
+          } if (abs(s) > 48000) break;            /* Stop if found mate       */
         } if (pvMove.pce == 0) continue;          /* No legal move to play    */
         make(pvMove);                             /* Make last best PV move   */
         if (cli) printBoard();                    /* Print board in CLI mode  */
-        printf("move %c%c%c%c%.1s\n",             /* Report best move to GUI  */
-        (pvMove.src & 7) + 'a',                   /* Best move source file    */
-        8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
-        (pvMove.dst & 7) + 'a',                   /* Best move target file    */
-        8 - ((pvMove.dst >> 4) & 7) + '0',        /* Best move target rank    */
-        "\0--nbrq" + pvMove.prom);                /* Best move promoted piece */
+        if (cli == 0)                             /* Don't print move in CLI  */
+          printf("move %c%c%c%c%.1s\n",           /* Report best move to GUI  */
+          (pvMove.src & 7) + 'a',                 /* Best move source file    */
+          8 - ((pvMove.src >> 4) & 7) + '0',      /* Best move source rank    */
+          (pvMove.dst & 7) + 'a',                 /* Best move target file    */
+          8 - ((pvMove.dst >> 4) & 7) + '0',      /* Best move target rank    */
+          "\0--nbrq" + pvMove.prom);              /* Best move promoted piece */
         fflush(stdout);                           /* Flush output             */
       } continue;                                 /* Process next command     */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
@@ -702,8 +710,8 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "board")) {            /* Extra command "board"    */
       printBoard(); continue;                     /* Print board to console   */
     } if (!strcmp(command, "cli")) {              /* CLI play mode            */
-      cli ^= 1; char* st = cli ? "ON" : "OFF";    /* Toggle CLI mode          */
-      printf("CLI mode is %s\n", st);             /* Print CLI mode status    */
+      cli = 1; printf("CLI mode is on\n", st);    /* Enter CLI mode           */
+      post = 0;                                   /* Do not print PV line     */
       printBoard();                               /* Print board to console   */
     } if (!strcmp(command, "quit")) break;        /* Terminate engine         */
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
