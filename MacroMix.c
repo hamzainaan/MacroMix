@@ -687,13 +687,12 @@ int main() {                                      /* Xboard / Winboard driver */
         } if (pvMove.pce == 0) continue;          /* No legal move to play    */
         make(pvMove);                             /* Make last best PV move   */
         if (cli) printBoard();                    /* Print board in CLI mode  */
-        if (cli == 0)                             /* Don't print move in CLI  */
-          printf("move %c%c%c%c%.1s\n",           /* Report best move to GUI  */
-          (pvMove.src & 7) + 'a',                 /* Best move source file    */
-          8 - ((pvMove.src >> 4) & 7) + '0',      /* Best move source rank    */
-          (pvMove.dst & 7) + 'a',                 /* Best move target file    */
-          8 - ((pvMove.dst >> 4) & 7) + '0',      /* Best move target rank    */
-          "\0--nbrq" + pvMove.prom);              /* Best move promoted piece */
+        printf("move %c%c%c%c%.1s\n",             /* Report best move to GUI  */
+        (pvMove.src & 7) + 'a',                   /* Best move source file    */
+        8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
+        (pvMove.dst & 7) + 'a',                   /* Best move target file    */
+        8 - ((pvMove.dst >> 4) & 7) + '0',        /* Best move target rank    */
+        "\0--nbrq" + pvMove.prom);                /* Best move promoted piece */
         fflush(stdout);                           /* Flush output             */
       } continue;                                 /* Process next command     */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
