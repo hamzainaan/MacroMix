@@ -1,2 +1,2 @@
 all:
-	gcc -O3 MacroMix.c -o MacroMix
+	gcc -Wall -O3 MacroMix.c -o MacroMix

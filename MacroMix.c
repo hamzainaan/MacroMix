@@ -135,30 +135,42 @@ int pst[7][128] = {{ 0 },                                                   /**/
   }                                                                         /**/
 };                                                                          /**/
 /******************************************************************************/
-/*                               Move generator                               */
+/*                                   Output                                   */
 /*                                                                            */
 /******************************************************************************/
-void printBoard() {                               /* Print board              */
+void printBoard() {                               /* Print board to console   */
   printf("\n");                                   /* Print new line           */
-  char p[] = ".kpnbrq--KPNBRQ";                   /* ASCII piece letters      */
-  char *u[] = { ".", "\u265a", "\u265f",          /* Unicode piece characters */
-  "\u265e", "\u265d", "\u265c", "\u265b",         /*                          */
-  "-", "-", "\u2654", "\u2659", "\u2658",         /*                          */
-  "\u2657", "\u2656", "\u2655" };                 /*                          */
   for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
     for (int file = 0; file < 16; file++) {       /* Loop over board files    */
       int sq = rank * 16 + file;                  /* Calculate current square */
       if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
       if (!(sq & 0x88)) {                         /* Square is not offboard   */
         #ifdef WIN64                              /* Use ASCII on windows     */
+        char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece letters      */
         printf("%c ", p[board[sq] & 15]);         /* Print board square       */
         #else                                     /* Use unicode otherwise    */
+        char *u[] = { ".", "\u265a", "\u265f",    /* Unicode piece characters */
+        "\u265e", "\u265d", "\u265c", "\u265b",   /*                          */
+        "-", "-", "\u2654", "\u2659", "\u2658",   /*                          */
+        "\u2657", "\u2656", "\u2655" };           /*                          */
         printf("%s ", u[board[sq] & 15]);         /* Print board square       */
         #endif                                    /*                          */
       }                                           /*                          */
     } printf("\n");                               /* Print new line           */
   } printf("\n    a b c d e f g h\n\n");          /* Print files              */
 }                                                 /*                          */
+/******************************************************************************/
+void printMove(Move move) {                       /* Print move to console    */
+  printf("%c%c%c%c%.1s",                          /* Report best move to GUI  */
+  (move.src & 7) + 'a',                           /* Source file              */
+  8 - ((move.src >> 4) & 7) + '0',                /* Source rank              */
+  (move.dst & 7) + 'a',                           /* Target file              */
+  8 - ((move.dst >> 4) & 7) + '0',                /* Target rank              */
+  "\0--nbrq" + move.prom);                        /* Promoted piece           */
+}                                                 /*                          */
+/******************************************************************************/
+/*                               Move generator                               */
+/*                                                                            */
 /******************************************************************************/
 int attack(int sq, int col) {                     /* Square attacked by color */
   for (int pceType = 1; pceType < 6; pceType++) { /* Loop over all but queen  */
@@ -422,7 +434,6 @@ int eval() {                                      /* Static evaluation        */
 /*                                                                            */
 /******************************************************************************/
 void sortMoves(MList *mList, int ply) {           /* Move scoring             */
-  int mScore = 0;                                 /* Move ordering score      */
   for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
     Move *move = &mList->moves[mv];               /* Get current move         */
     int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
@@ -549,7 +560,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
 /******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
-  printf("MacroMix by Code Monkey King\n");       /* Engine info for GUI      */
+  printf("MacroMix by CMK\n");                    /* Engine info for GUI      */
   char input[80] = "new";                         /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
   do {                                            /* User command loop        */
@@ -674,31 +685,21 @@ int main() {                                      /* Xboard / Winboard driver */
             d, s, (getTimeMs()-tick)/10, nodes);  /* depth/score/time/nodes   */
           for (int i = 0; i < pvLength[0]; i++) { /* Loop over PV line        */
             Move move = pvTable[0][i];            /* Get PV move              */
-            printf("%c%c%c%c%.1s",                /* Print PV move            */
-              (move.src & 7) + 'a',               /* PV move source file      */
-              8 - ((move.src >> 4) & 7) + '0',    /* PV move source rank      */
-              (move.dst & 7) + 'a',               /* PV move target file      */
-              8 - (move.dst >> 4 & 7) + '0',      /* PV move target rank      */
-              "\0--nbrq" + move.prom);            /* PV move promoted piece   */
+            printMove(move);                      /* Print PV move            */
             if (i < pvLength[0] - 1)              /* Not the last PV move     */
               printf(" ");                        /* Print separator          */
           } printf("\n");                         /* Print new line           */
           } if (abs(s) > 48000) break;            /* Stop if found mate       */
         } if (pvMove.pce == 0) continue;          /* No legal move to play    */
-        make(pvMove);                             /* Make last best PV move   */
-        
-        printf("move %c%c%c%c%.1s\n",             /* Report best move to GUI  */
-        (pvMove.src & 7) + 'a',                   /* Best move source file    */
-        8 - ((pvMove.src >> 4) & 7) + '0',        /* Best move source rank    */
-        (pvMove.dst & 7) + 'a',                   /* Best move target file    */
-        8 - ((pvMove.dst >> 4) & 7) + '0',        /* Best move target rank    */
-        "\0--nbrq" + pvMove.prom);                /* Best move promoted piece */
+        make(pvMove); printf("move ");            /* Make best lst PV move    */
+        printMove(pvMove); printf("\n");          /* Print best move          */
         if (cli) printBoard();                    /* Print board in CLI mode  */
         fflush(stdout);                           /* Flush output             */
-      } continue;                                 /* Process next command     */
+      } continue;                                 /* Read next command        */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
       if (gamePly > 0) undo();                    /* Undo move if any         */
-      if (cli) printBoard(); continue;            /* Print board in CLI mode  */
+      if (cli) printBoard();                      /* Print board in CLI mode  */
+      continue;                                   /* Process next command     */
     } if (!strncmp(command, "perft", 5)) {        /* Perft test               */
       tick = getTimeMs();                         /* Start timer              */
       nodes = 0;                                  /* Reset node count         */
@@ -710,7 +711,7 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "board")) {            /* Extra command "board"    */
       printBoard(); continue;                     /* Print board to console   */
     } if (!strcmp(command, "cli")) {              /* CLI play mode            */
-      cli = 1; printf("CLI mode is on\n", st);    /* Enter CLI mode           */
+      cli = 1; printf("CLI mode\n");              /* Enter CLI mode           */
       post = 0;                                   /* Do not print PV line     */
       printBoard();                               /* Print board to console   */
     } if (!strcmp(command, "quit")) break;        /* Terminate engine         */
