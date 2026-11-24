@@ -138,98 +138,27 @@ int pst[7][128] = {{ 0 },                                                   /**/
 /*                                  Functions                                 */
 /*                                                                            */
 /******************************************************************************/
-void genMoves(MList *mList, int caps);
-int inCheck(int color);
-int reps();
-int make(Move move);
-void undo();
-/******************************************************************************/
-/*                                   Output                                   */
-/*                                                                            */
-/******************************************************************************/
-void printBoard() {                               /* Print board to console   */
-  printf("\n");                                   /* Print new line           */
-  for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
-    for (int file = 0; file < 16; file++) {       /* Loop over board files    */
-      int sq = rank * 16 + file;                  /* Calculate current square */
-      if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
-      if (!(sq & 0x88)) {                         /* Square is not offboard   */
-        #ifdef WIN64                              /* Use ASCII on windows     */
-        char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece letters      */
-        printf("%c ", p[board[sq] & 15]);         /* Print board square       */
-        #else                                     /* Use unicode otherwise    */
-        char *u[] = { ".", "\u265a", "\u265f",    /* Unicode piece characters */
-        "\u265e", "\u265d", "\u265c", "\u265b",   /*                          */
-        "-", "-", "\u2654", "\u2659", "\u2658",   /*                          */
-        "\u2657", "\u2656", "\u2655" };           /*                          */
-        printf("%s ", u[board[sq] & 15]);         /* Print board square       */
-        #endif                                    /*                          */
-      }                                           /*                          */
-    } printf("\n");                               /* Print new line           */
-  } printf("\n    a b c d e f g h\n\n");          /* Print files              */
-}                                                 /*                          */
-/******************************************************************************/
-void printMove(Move move) {                       /* Print move to console    */
-  printf("%c%c%c%c%.1s",                          /* Report best move to GUI  */
-  (move.src & 7) + 'a',                           /* Source file              */
-  8 - ((move.src >> 4) & 7) + '0',                /* Source rank              */
-  (move.dst & 7) + 'a',                           /* Target file              */
-  8 - ((move.dst >> 4) & 7) + '0',                /* Target rank              */
-  "\0--nbrq" + move.prom);                        /* Promoted piece           */
-}                                                 /*                          */
-/******************************************************************************/
-void printResult() {                              /* Game result              */
-  MList mList; genMoves(&mList, 0);               /* Generate moves           */
-  int legalMoves = 0;                             /* Legal moves counter      */
-  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */
-    if (make(mList.moves[i]) == 0) continue;      /* Make only legal moves    */
-    legalMoves++; undo();                         /* Count moves, take back   */
-  } if (legalMoves == 0) {                        /* No legal moves to make   */
-    if (inCheck(side)) {                          /* Side to move in check    */
-      if (side == 8) {                            /* White in check           */
-        printf("0-1 {Black mates}\n");            /* Black wins               */
-      } else printf("1-0 {White mates}\n");       /* Otherwise white wins     */
-    } else printf("1/2-1/2 {Stalemate}\n");       /* Draw by stalemate        */
-  } else if (reps() == 2) {                       /* Three fold repetition    */
-    printf("1/2-1/2 {Draw by repetition}\n");     /* Draw by repetition       */
-  } else if (fifty >= 100)                        /* Fifty move rule          */
-  printf("1/2-1/2 {Draw by fifty move rule}\n");  /* Draw by fifty move rule  */
-}                                                 /*                          */
+void genMoves(MList *mList, int caps);            /* Generate moves/captures  */
+int attack(int sq, int color);                    /* Square attacked by side  */
+int make(Move move);                              /* Make move on board       */
+void undo();                                      /* Undo move on board       */
+void perft(int d);                                /* Perft testing            */
+void think();                                     /* Play engine move         */
+int search(int depth,int ply,int alpha,int beta); /* Search all moves         */
+int quiesce(int ply, int alpha, int beta);        /* Search only captures     */
+int eval();                                       /* Evaluate position        */
+void pickMove(MList *mList, int mv1);             /* Sort next move in a list */
+void scoreMoves(MList *mList, int ply);           /* Score moves in order     */
+int reps();                                       /* Find move repetitions    */
+int inCheck(int color);                           /* Side to move under check */
+void setHash();                                   /* Encode board position    */
+int getTimeMs();                                  /* Get time in ms           */
+void printBoard();                                /* Print board to           */
+void printMove(Move move);                        /* Print move               */
+void printResult();                               /* Print game result        */
 /******************************************************************************/
 /*                               Move generator                               */
 /*                                                                            */
-/******************************************************************************/
-int attack(int sq, int col) {                     /* Square attacked by color */
-  for (int pceType = 1; pceType < 6; pceType++) { /* Loop over all but queen  */
-    int pce = pceType | col;                      /* Build piece              */
-    if (pceType == 2) {                           /* Attacked by a pawn       */
-      int dir = ((col == 8) ? 16 : -16);          /* Attack direction         */
-      for (int cap = -1; cap <= 1; cap += 2) {    /* Pawn attack offsets      */
-        int src = sq + dir + cap;                 /* Attack source square     */
-        if (!(src & 0x88) && board[src] == pce)   /* Pawn attacks square      */
-          return 1;                               /* Return true              */
-      }                                           /*                          */
-    } else {                                      /* Attacked by a piece      */
-      int slider = pceType & 0x04;                /* Slider or leaper piece   */
-      for (int d = 0; d < 8; d++) {               /* Piece attack offsets     */
-        int dir = offsets[pceType][d];            /* Attack direction         */
-        if (dir == 0) break;                      /* Skip placeholders        */
-        int src = sq;                             /* Attack source square     */
-        do {                                      /* Follow attack ray        */
-            src += dir;                           /* Attack source square     */
-            if (src & 0x88) break;                /* Skip offboard squares    */
-            int att = board[src];                 /* Attacking piece          */
-            if (att != 0) {                       /* Not an empty square      */
-                if (att == pce ||                 /* Piece attacks square     */
-                    (slider && att == (6 | col))) /* or queen along the ray   */
-                  return 1;                       /* Return true              */
-                break;                            /* Search no more           */
-            }                                     /*                          */
-        } while (slider);                         /* Repeat for slider pieces */
-      }                                           /*                          */
-    }                                             /*                          */
-  } return 0;                                     /* Square is not attacked   */
-}                                                 /*                          */
 /******************************************************************************/
 void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
   if (mList) mList->count = 0;                    /* Reset move count         */
@@ -312,49 +241,36 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
-int inCheck(int color) {                          /* Is king in check ?       */
-  return attack(kingSq[color >> 4], 24 - color);  /* King attacked by enemy?  */
-}                                                 /*                          */
-/******************************************************************************/
-void setHash() {                                  /* Used for repetition      */
-  hash = 0;                                       /* Reset position hash key  */
-  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
-    int pce = board[sq];                          /* Get square contents      */
-    int col = -1;                                 /* Set no piece color       */
-    if (pce & 8) col = 0;                         /* Piece is white           */
-    if (pce & 16) col = 1;                        /* Piece is black           */
-    if (col >= 0)                                 /* Piece is not empty       */
-      hash ^= hashPiece[col][pce & 7][sq];        /* Hash piece               */
-  }                                               /*                          */
-}                                                 /*                          */
-/******************************************************************************/
-void undo() {                                     /* Undo move on board       */
-  gamePly--;                                      /* Decrement game ply       */
-  Move move = game[gamePly].move;                 /* Load move from a game    */
-  side = game[gamePly].side;                      /* Load side to move        */
-  ep = game[gamePly].ep;                          /* Load en passant square   */
-  castle = game[gamePly].castle;                  /* Load castling rights     */
-  fifty = game[gamePly].fifty;                    /* Load fifty move count    */
-  hash = game[gamePly].hash;                      /* Load hash key            */
-  board[move.dst] = 0;                            /* Empty target square      */
-  board[move.src] = move.pce;                     /* Move a piece back        */
-  board[move.capSq] = move.capPce;                /* Restore captured piece   */
-  if ((move.pce & 7) == 1)                        /* Piece is a king          */
-    kingSq[side >> 4] = move.src;                 /* Restore king square      */
-  if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
-     ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
-    switch(move.dst) {                            /* Where king castled       */
-      case 118:                                   /* Square G1                */
-        board[119] = 13; board[117] = 0; break;   /* Move rook from F1 to H1  */
-      case 114:                                   /* Square C1                */
-        board[112] = 13; board[115] = 0; break;   /* Move rook from D1 to A1  */
-      case 6:                                     /* Square G8                */
-        board[7] = 21; board[5] = 0; break;       /* Move rook from F8 to H8  */
-      case 2:                                     /* Square C8                */
-        board[0] = 21; board[3] = 0; break;       /* Move rook from D8 to A8  */
+int attack(int sq, int color) {                   /* Square attacked by color */
+  for (int pceType = 1; pceType < 6; pceType++) { /* Loop over all but queen  */
+    int pce = pceType | color;                    /* Build piece              */
+    if (pceType == 2) {                           /* Attacked by a pawn       */
+      int dir = ((color == 8) ? 16 : -16);        /* Attack direction         */
+      for (int cap = -1; cap <= 1; cap += 2) {    /* Pawn attack offsets      */
+        int src = sq + dir + cap;                 /* Attack source square     */
+        if (!(src & 0x88) && board[src] == pce)   /* Pawn attacks square      */
+          return 1;                               /* Return true              */
+      }                                           /*                          */
+    } else {                                      /* Attacked by a piece      */
+      int slider = pceType & 0x04;                /* Slider or leaper piece   */
+      for (int d = 0; d < 8; d++) {               /* Piece attack offsets     */
+        int dir = offsets[pceType][d];            /* Attack direction         */
+        if (dir == 0) break;                      /* Skip placeholders        */
+        int src = sq;                             /* Attack source square     */
+        do {                                      /* Follow attack ray        */
+            src += dir;                           /* Attack source square     */
+            if (src & 0x88) break;                /* Skip offboard squares    */
+            int att = board[src];                 /* Attacking piece          */
+            if (att != 0) {                       /* Not an empty square      */
+                if (att == pce ||                 /* Piece attacks square     */
+                  (slider && att == (6 | color))) /* or queen along the ray   */
+                  return 1;                       /* Return true              */
+                break;                            /* Search no more           */
+            }                                     /*                          */
+        } while (slider);                         /* Repeat for slider pieces */
+      }                                           /*                          */
     }                                             /*                          */
-  }                                               /*                          */
+  } return 0;                                     /* Square is not attacked   */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
@@ -406,134 +322,78 @@ int make(Move move) {                             /* Make move on board       */
   return 1;                                       /* Return legal move        */
 }                                                 /*                          */
 /******************************************************************************/
+void undo() {                                     /* Undo move on board       */
+  gamePly--;                                      /* Decrement game ply       */
+  Move move = game[gamePly].move;                 /* Load move from a game    */
+  side = game[gamePly].side;                      /* Load side to move        */
+  ep = game[gamePly].ep;                          /* Load en passant square   */
+  castle = game[gamePly].castle;                  /* Load castling rights     */
+  fifty = game[gamePly].fifty;                    /* Load fifty move count    */
+  hash = game[gamePly].hash;                      /* Load hash key            */
+  board[move.dst] = 0;                            /* Empty target square      */
+  board[move.src] = move.pce;                     /* Move a piece back        */
+  board[move.capSq] = move.capPce;                /* Restore captured piece   */
+  if ((move.pce & 7) == 1)                        /* Piece is a king          */
+    kingSq[side >> 4] = move.src;                 /* Restore king square      */
+  if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
+     ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
+    switch(move.dst) {                            /* Where king castled       */
+      case 118:                                   /* Square G1                */
+        board[119] = 13; board[117] = 0; break;   /* Move rook from F1 to H1  */
+      case 114:                                   /* Square C1                */
+        board[112] = 13; board[115] = 0; break;   /* Move rook from D1 to A1  */
+      case 6:                                     /* Square G8                */
+        board[7] = 21; board[5] = 0; break;       /* Move rook from F8 to H8  */
+      case 2:                                     /* Square C8                */
+        board[0] = 21; board[3] = 0; break;       /* Move rook from D8 to A8  */
+    }                                             /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
 /*                                   Perft                                    */
 /*                                                                            */
 /******************************************************************************/
-int getTimeMs() {                                 /* Count time spent         */
-  #ifdef WIN64                                    /* On Windows               */
-    return GetTickCount ();                       /* Use GetTickCount()       */
-  #else                                           /* On Linux                 */
-    struct timeval t;                             /* Create time structure    */
-    gettimeofday (&t, NULL);                      /* Use gettimeofday()       */
-    return t.tv_sec*1000 + t.tv_usec/1000;        /* return time in ms        */
-  #endif	                                      /*                          */
-}                                                 /*                          */
-/******************************************************************************/
-void perft(int d) {                               /* Move generator test      */
-  if (d == 0) { nodes++; return; }                /* Count leaf nodes         */
+void perft(int depth) {                           /* Move generator test      */
+  if (depth == 0) { nodes++; return; }            /* Count leaf nodes         */
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
   for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
-    perft(d - 1);                                 /* Traverse move tree       */
+    perft(depth - 1);                             /* Traverse move tree       */
     undo();                                       /* Take move back           */
   }                                               /*                          */
-}                                                 /*                          */
-/******************************************************************************/
-/*                                 Evaluation                                 */
-/*                                                                            */
-/******************************************************************************/
-int eval() {                                      /* Static evaluation        */
-  int score = 0;                                  /* Reset static score       */
-  int matWhite = 0, matBlack = 0;                 /* White & black material   */
-  int kingWhite = 0, kingBlack = 0;               /* King squares             */
-  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
-    int pce = board[sq];                          /* Get square contents      */
-    int pceType = pce & 7;                        /* Extract piece type       */
-    if (pce == 9) kingWhite = sq;                 /* Remember white king      */
-    if (pce == 17) kingBlack = sq;                /* Remember black king      */
-    if (pceType == 1) continue;                   /* Skip kings               */
-    if (pce & 8) matWhite += material[pceType];   /* Count white material     */
-    if (pce & 16) matBlack += material[pceType];  /* Count black material     */
-    if (pce & 8)                                  /* White piece              */
-      score += pst[pceType][sq];                  /* White positional score   */
-    if (pce & 16)                                 /* Black piece              */
-      score -= pst[pceType][sq ^ 112];            /* Black positional score   */
-  } if (matWhite < 1200) kingWhite += 8;          /* White king in an endgame */
-  if (matBlack < 1200) kingBlack += 8;            /* Black king in an endgame */
-  score += matWhite + pst[1][kingWhite];          /* White material and king  */
-  score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
-  return (side == 8) ? score : -score;            /* Side respective score    */
 }                                                 /*                          */
 /******************************************************************************/
 /*                                   Search                                   */
 /*                                                                            */
 /******************************************************************************/
-int reps() {                                      /* Repetition detection     */
-  int reps = 0;                                   /* Position repetitions     */
-  for (int i = gamePly - 2;                       /* Loop over game history   */
-       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
-    if (game[i].hash == hash) reps++;             /* Found repetition         */
-  return reps;                                    /* Times position repeats   */
-}                                                 /*                          */
-/******************************************************************************/
-void sortMoves(MList *mList, int ply) {           /* Move scoring             */
-  for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
-    Move *move = &mList->moves[mv];               /* Get current move         */
-    int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
-    int pvDst = pvTable[0][ply].dst;              /* Get PV move target       */
-    if (move->src == pvSrc && move->dst == pvDst) /* Move is a PV move        */
-      move->score = 2000000000;                   /* Give it highest score    */
-    else if (move->capPce) {                      /* Capture move             */
-      int att = board[move->src] & 7;             /* Get attacker piece       */
-      int vic = move->capPce & 7;                 /* Get victim piece         */
-      move->score = vic*100 - att + 1000000000;   /* MVV/LVA captures sort    */
-    } else {                                      /* Quiet move               */
-      if (move->src == killMoves[0][ply].src &&   /*                          */
-          move->dst == killMoves[0][ply].dst)     /* Move is 1st killer move  */
-        move->score = 900000000;                  /* Score 1st killer move    */
-      else if (killMoves[1][ply].src == move->src /*                          */
-           && killMoves[1][ply].dst == move->dst) /* Move is 2nd killer move  */
-        move->score = 800000000;                  /* Score 2nd killer move    */
-      else move->score = histScores[              /* Other quiet moves        */
-        board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
-    }                                             /*                          */
-  }                                               /*                          */
-}                                                 /*                          */
-/******************************************************************************/
-void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
-  int count = mList->count;                       /* Move list length         */
-  for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
-    if (mList->moves[mv1].score <                 /* Current score            */
-        mList->moves[mv2].score) {                /* Less than next score     */
-      Move temp = mList->moves[mv1];              /* Create temp move         */
-      mList->moves[mv1] = mList->moves[mv2];      /* Higher score goes first  */
-      mList->moves[mv2] = temp;                   /* Lower score goes after   */
-    }                                             /*                          */
-  }                                               /*                          */
-}                                                 /*                          */
-/******************************************************************************/
-int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
-  if (stop) return 0;                             /* Time is up, return       */
-  nodes++;                                        /* Count searched positions */
-  if ((nodes & 1023) == 0)                        /* Check time control       */
-    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
-  pvLength[ply] = ply;                            /* Init PV length           */
-  if (ply >= 62) return eval();                   /* Too deep, evaluate       */
-  if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
-  int score = eval();                             /* Evaluate position        */
-  if (score >= beta) return beta;                 /* Beta cutoff              */
-  if (score > alpha) alpha = score;               /* Update alpha score       */
-  MList mList; genMoves(&mList, 1);               /* Generate moves           */
-  sortMoves(&mList, ply);                         /* Score moves              */
-  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
-    pickMove(&mList, i);                          /* Bring best move forward  */
-    Move move = mList.moves[i];                   /* Get current move         */
-    if (make(move) == 0) continue;                /* Make move, skip illegals */
-    int score = -quiesce(ply + 1, -beta, -alpha); /* Quiescence search        */
-    undo();                                       /* Take move back           */
-    if (stop) return 0;                           /* Time is up, return       */
-    if (score > alpha) {                          /* Found a better capture   */
-      if (score >= beta) return beta;             /* Beta cutoff              */
-      alpha = score;                              /* Update alpha score       */
-      pvTable[ply][ply] = move;                   /* Record PV table entry    */
-      for (int n = ply + 1;                       /* Copy remaining PV moves  */
-               n < pvLength[ply + 1]; n++)        /* From the next ply        */
-        pvTable[ply][n] = pvTable[ply + 1][n];    /* To current PV table ply  */
-      pvLength[ply] = pvLength[ply + 1];          /* Update PV length         */
-    }                                             /*                          */
-  } return alpha;                                 /* Return best score        */
+void think() {                                    /* Engine move              */
+  tick = getTimeMs();                             /* Start timer              */
+  stop = 0;                                       /* Reset stop flag          */
+  nodes = 0;                                      /* Reset position count     */
+  memset(pvTable,0,sizeof(pvTable));              /* Reset PV table           */
+  memset(pvLength,0,sizeof(pvLength));            /* Reset PV length table    */
+  memset(killMoves,0,sizeof(killMoves));          /* Reset killers table      */
+  memset(histScores,0,sizeof(histScores));        /* Reset history table      */
+  Move pvMove = { 0 };                            /* Init PV move holder      */
+  for (int d = 1; d <= sd; d++) {                 /* Iterative deepening      */
+    int s = search(d, 0, -50000, 50000);          /* Search best move         */
+    if (stop) break;                              /* Time is up or game over  */
+    pvMove = pvTable[0][0];                       /* Record last best move    */
+    if (post) { printf("%d %d %d %d ",            /* Engine search output     */
+      d, s, (getTimeMs()-tick)/10, nodes);        /* depth/score/time/nodes   */
+    for (int i = 0; i < pvLength[0]; i++) {       /* Loop over PV line        */
+      Move move = pvTable[0][i];                  /* Get PV move              */
+      printMove(move);                            /* Print PV move            */
+      if (i < pvLength[0] - 1)                    /* Not the last PV move     */
+        printf(" ");                              /* Print separator          */
+    } printf("\n");                               /* Print new line           */
+    } if (abs(s) > 48000) break;                  /* Stop if found mate       */
+  } if (pvMove.pce == 0) return;                  /* No legal move to play    */
+  make(pvMove); printf("move ");                  /* Make best lst PV move    */
+  printMove(pvMove); printf("\n");                /* Print best move          */
+  if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
+  fflush(stdout);                                 /* Flush output             */
 }                                                 /*                          */
 /******************************************************************************/
 int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
@@ -553,7 +413,7 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
-  sortMoves(&mList, ply);                         /* Score moves              */
+  scoreMoves(&mList, ply);                        /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -585,22 +445,202 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   return alpha;                                   /* Return best score        */
 }                                                 /*                          */
 /******************************************************************************/
+int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
+  if (stop) return 0;                             /* Time is up, return       */
+  nodes++;                                        /* Count searched positions */
+  if ((nodes & 1023) == 0)                        /* Check time control       */
+    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
+  pvLength[ply] = ply;                            /* Init PV length           */
+  if (ply >= 62) return eval();                   /* Too deep, evaluate       */
+  if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
+  int score = eval();                             /* Evaluate position        */
+  if (score >= beta) return beta;                 /* Beta cutoff              */
+  if (score > alpha) alpha = score;               /* Update alpha score       */
+  MList mList; genMoves(&mList, 1);               /* Generate moves           */
+  scoreMoves(&mList, ply);                        /* Score moves              */
+  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
+    pickMove(&mList, i);                          /* Bring best move forward  */
+    Move move = mList.moves[i];                   /* Get current move         */
+    if (make(move) == 0) continue;                /* Make move, skip illegals */
+    int score = -quiesce(ply + 1, -beta, -alpha); /* Quiescence search        */
+    undo();                                       /* Take move back           */
+    if (stop) return 0;                           /* Time is up, return       */
+    if (score > alpha) {                          /* Found a better capture   */
+      if (score >= beta) return beta;             /* Beta cutoff              */
+      alpha = score;                              /* Update alpha score       */
+      pvTable[ply][ply] = move;                   /* Record PV table entry    */
+      for (int n = ply + 1;                       /* Copy remaining PV moves  */
+               n < pvLength[ply + 1]; n++)        /* From the next ply        */
+        pvTable[ply][n] = pvTable[ply + 1][n];    /* To current PV table ply  */
+      pvLength[ply] = pvLength[ply + 1];          /* Update PV length         */
+    }                                             /*                          */
+  } return alpha;                                 /* Return best score        */
+}                                                 /*                          */
+/******************************************************************************/
+int eval() {                                      /* Static evaluation        */
+  int score = 0;                                  /* Reset static score       */
+  int matWhite = 0, matBlack = 0;                 /* White & black material   */
+  int kingWhite = 0, kingBlack = 0;               /* King squares             */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
+    int pce = board[sq];                          /* Get square contents      */
+    int pceType = pce & 7;                        /* Extract piece type       */
+    if (pce == 9) kingWhite = sq;                 /* Remember white king      */
+    if (pce == 17) kingBlack = sq;                /* Remember black king      */
+    if (pceType == 1) continue;                   /* Skip kings               */
+    if (pce & 8) matWhite += material[pceType];   /* Count white material     */
+    if (pce & 16) matBlack += material[pceType];  /* Count black material     */
+    if (pce & 8)                                  /* White piece              */
+      score += pst[pceType][sq];                  /* White positional score   */
+    if (pce & 16)                                 /* Black piece              */
+      score -= pst[pceType][sq ^ 112];            /* Black positional score   */
+  } if (matWhite < 1200) kingWhite += 8;          /* White king in an endgame */
+  if (matBlack < 1200) kingBlack += 8;            /* Black king in an endgame */
+  score += matWhite + pst[1][kingWhite];          /* White material and king  */
+  score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
+  return (side == 8) ? score : -score;            /* Side respective score    */
+}                                                 /*                          */
+/******************************************************************************/
+void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
+  int count = mList->count;                       /* Move list length         */
+  for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
+    if (mList->moves[mv1].score <                 /* Current score            */
+        mList->moves[mv2].score) {                /* Less than next score     */
+      Move temp = mList->moves[mv1];              /* Create temp move         */
+      mList->moves[mv1] = mList->moves[mv2];      /* Higher score goes first  */
+      mList->moves[mv2] = temp;                   /* Lower score goes after   */
+    }                                             /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void scoreMoves(MList *mList, int ply) {          /* Move scoring             */
+  for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
+    Move *move = &mList->moves[mv];               /* Get current move         */
+    int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
+    int pvDst = pvTable[0][ply].dst;              /* Get PV move target       */
+    if (move->src == pvSrc && move->dst == pvDst) /* Move is a PV move        */
+      move->score = 2000000000;                   /* Give it highest score    */
+    else if (move->capPce) {                      /* Capture move             */
+      int att = board[move->src] & 7;             /* Get attacker piece       */
+      int vic = move->capPce & 7;                 /* Get victim piece         */
+      move->score = vic*100 - att + 1000000000;   /* MVV/LVA captures sort    */
+    } else {                                      /* Quiet move               */
+      if (move->src == killMoves[0][ply].src &&   /*                          */
+          move->dst == killMoves[0][ply].dst)     /* Move is 1st killer move  */
+        move->score = 900000000;                  /* Score 1st killer move    */
+      else if (killMoves[1][ply].src == move->src /*                          */
+           && killMoves[1][ply].dst == move->dst) /* Move is 2nd killer move  */
+        move->score = 800000000;                  /* Score 2nd killer move    */
+      else move->score = histScores[              /* Other quiet moves        */
+        board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
+    }                                             /*                          */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int reps() {                                      /* Repetition detection     */
+  int reps = 0;                                   /* Position repetitions     */
+  for (int i = gamePly - 2;                       /* Loop over game history   */
+       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
+    if (game[i].hash == hash) reps++;             /* Found repetition         */
+  return reps;                                    /* Times position repeats   */
+}                                                 /*                          */
+/******************************************************************************/
+int inCheck(int color) {                          /* Is king in check ?       */
+  return attack(kingSq[color >> 4], 24 - color);  /* King attacked by enemy?  */
+}                                                 /*                          */
+/******************************************************************************/
+void setHash() {                                  /* Encode board position    */
+  hash = 0;                                       /* Reset position hash key  */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
+    int pce = board[sq];                          /* Get square contents      */
+    int col = -1;                                 /* Set no piece color       */
+    if (pce & 8) col = 0;                         /* Piece is white           */
+    if (pce & 16) col = 1;                        /* Piece is black           */
+    if (col >= 0)                                 /* Piece is not empty       */
+      hash ^= hashPiece[col][pce & 7][sq];        /* Hash piece               */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int getTimeMs() {                                 /* Count time spent         */
+  #ifdef WIN64                                    /* On Windows               */
+    return GetTickCount ();                       /* Use GetTickCount()       */
+  #else                                           /* On Linux                 */
+    struct timeval t;                             /* Create time structure    */
+    gettimeofday (&t, NULL);                      /* Use gettimeofday()       */
+    return t.tv_sec*1000 + t.tv_usec/1000;        /* return time in ms        */
+  #endif	                                      /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+/*                                   Output                                   */
+/*                                                                            */
+/******************************************************************************/
+void printBoard() {                               /* Print board to console   */
+  printf("\n");                                   /* Print new line           */
+  for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
+    for (int file = 0; file < 16; file++) {       /* Loop over board files    */
+      int sq = rank * 16 + file;                  /* Calculate current square */
+      if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
+      if (!(sq & 0x88)) {                         /* Square is not offboard   */
+        #ifdef WIN64                              /* Use ASCII on windows     */
+        char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece letters      */
+        printf("%c ", p[board[sq] & 15]);         /* Print board square       */
+        #else                                     /* Use unicode otherwise    */
+        char *u[] = { ".", "\u265a", "\u265f",    /* Unicode piece characters */
+        "\u265e", "\u265d", "\u265c", "\u265b",   /*                          */
+        "-", "-", "\u2654", "\u2659", "\u2658",   /*                          */
+        "\u2657", "\u2656", "\u2655" };           /*                          */
+        printf("%s ", u[board[sq] & 15]);         /* Print board square       */
+        #endif                                    /*                          */
+      }                                           /*                          */
+    } printf("\n");                               /* Print new line           */
+  } printf("\n    a b c d e f g h\n\n");          /* Print files              */
+}                                                 /*                          */
+/******************************************************************************/
+void printMove(Move move) {                       /* Print move to console    */
+  printf("%c%c%c%c%.1s",                          /* Report best move to GUI  */
+  (move.src & 7) + 'a',                           /* Source file              */
+  8 - ((move.src >> 4) & 7) + '0',                /* Source rank              */
+  (move.dst & 7) + 'a',                           /* Target file              */
+  8 - ((move.dst >> 4) & 7) + '0',                /* Target rank              */
+  "\0--nbrq" + move.prom);                        /* Promoted piece           */
+}                                                 /*                          */
+/******************************************************************************/
+void printResult() {                              /* Game result              */
+  MList mList; genMoves(&mList, 0);               /* Generate moves           */
+  int legalMoves = 0;                             /* Legal moves counter      */
+  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */
+    if (make(mList.moves[i]) == 0) continue;      /* Make only legal moves    */
+    legalMoves++; undo();                         /* Count moves, take back   */
+  } if (legalMoves == 0) {                        /* No legal moves to make   */
+    if (inCheck(side)) {                          /* Side to move in check    */
+      if (side == 8) {                            /* White in check           */
+        printf("0-1 {Black mates}\n");            /* Black wins               */
+      } else printf("1-0 {White mates}\n");       /* Otherwise white wins     */
+    } else printf("1/2-1/2 {Stalemate}\n");       /* Draw by stalemate        */
+  } else if (reps() == 2) {                       /* Three fold repetition    */
+    printf("1/2-1/2 {Draw by repetition}\n");     /* Draw by repetition       */
+  } else if (fifty >= 100)                        /* Fifty move rule          */
+  printf("1/2-1/2 {Draw by fifty move rule}\n");  /* Draw by fifty move rule  */
+}                                                 /*                          */
+/******************************************************************************/
 /*                               CECP Protocol                                */
 /*                                                                            */
 /******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   printf("MacroMix by CMK\n");                    /* Engine info for GUI      */
+  printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[80] = "new";                         /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
   do {                                            /* User command loop        */
     char command[32] = { 0 };                     /* User command storage     */                 
     sscanf(input, "%31[^\n]", command);           /* Read user command        */
-    if (!strcmp(command, "xboard")) {             /* Command "xboard"         */
+    if (!strcmp(command, "xboard")) {             /* CECP command "xboard"    */
       cli = 0; post = 1; continue;                /* Print PV by default      */
-    } if (!strncmp(command, "protover", 8)) {     /* Command "protover"       */
+    } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
       printf("feature done=1\n");                 /* Prevent GUI delay        */
-    } if (!strcmp(command, "new")) {              /* Command "new"            */
+    } if (!strcmp(command, "new")) {              /* CECP command "new"       */
       srand(0);                                   /* Set random seed          */
       for (int col = 0; col < 2; col++)           /* Loop over color types    */
         for (int t = 0; t < 7; t++)               /* Loop over piece types    */
@@ -630,12 +670,12 @@ int main() {                                      /* Xboard / Winboard driver */
         setHash();                                /* Hash position            */
         if (cli) printBoard();                    /* Print board to console   */
         continue;                                 /* Process next command     */
-    } if (!strncmp(command, "level", 5)) {        /* Command "level"          */
+    } if (!strncmp(command, "level", 5)) {        /* CECP command "level"     */
       float sec = 0; mps = 0;                     /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
              &mps, &sec);                         /* and time increment       */
       inc = sec * 1000; continue;                 /* Increment in ms          */
-    } if (!strncmp(command, "time", 4)) {         /* Command "time"           */
+    } if (!strncmp(command, "time", 4)) {         /* CECP command "time"      */
       int ms = atoi(command + 5) * 10;            /* Remaining time in ms     */
       int mtg = 30;                               /* Default moves to go      */
       if (mps)                                    /* Moves per session given  */
@@ -644,28 +684,25 @@ int main() {                                      /* Xboard / Winboard driver */
       st = ms / mtg + inc;                        /* Set time control         */
       if (st > ms / 2) st = ms / 2;               /* Keep safety time margin  */
       sd = 63; continue;                          /* "Infinite" search depth  */
-    } if (!strcmp(command, "white")) {            /* Command "white"          */
+    } if (!strcmp(command, "white")) {            /* CECP command "white"     */
       force = 0; side = 8; continue;              /* Computer plays white     */
-    } if (!strcmp(command, "black")) {            /* Command "black"          */
+    } if (!strcmp(command, "black")) {            /* CECP command "black"     */
       force = 0; side = 16; continue;             /* Computer plays black     */
-    } if (!strcmp(command, "force")) {            /* Command "force"          */
+    } if (!strcmp(command, "force")) {            /* CECP command "force"     */
       force = 1; continue;                        /* Computer plays neither   */
-    } if (!strncmp(command, "st", 2)) {           /* Command "st"             */
+    } if (!strncmp(command, "st", 2)) {           /* CECP command "st"        */
       st = atoi(command + 3) * 1000;              /* Fixed time search mode   */
       sd = 63; continue;                          /* "Infinite" search depth  */
-    } if (!strncmp(command, "sd", 2)) {           /* Command "sd"             */
+    } if (!strncmp(command, "sd", 2)) {           /* CECP command "sd"        */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
       st = 1e6; continue;                         /* "Infinite" search time   */
-    } if (!strcmp(command, "post")) {             /* Command "post"           */
+    } if (!strcmp(command, "post")) {             /* CECP command "post"      */
       post = 1; continue;                         /* Set print PV flag        */
-    } if (!strcmp(command, "nopost")) {           /* Command "nopost"         */
+    } if (!strcmp(command, "nopost")) {           /* CECP command "nopost"    */
       post = 0; continue;                         /* Unset print PV flag      */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
-      command[0] = 'a';                           /* Fake move using illegal  */
-      command[1] = '8';                           /* coords, engine would     */
-      command[2] = 'a';                           /* skip it and start        */
-      command[3] = '8';                           /* calculating              */
+      command[1] = '9';                           /* Fake illegal move        */
     } if (command[0] >= 'a' &&                    /*                          */
           command[0] <= 'z' &&                    /* If command is a move     */
           command[1] >= '0' &&                    /* in format "e2e4"         */
@@ -694,39 +731,14 @@ int main() {                                      /* Xboard / Winboard driver */
             prom == move.prom) {                  /*                          */
           setHash(); legal = make(move); break;   /* Make move if legal       */
         }                                         /*                          */
-      } if (!legal && strcmp(command, "a8a8")) {  /* Not a legal user move    */
+      } if (!legal && strcmp(command, "g9")) {    /* Not a legal user move    */
         printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
         continue;                                 /* Do not search            */
       } if (cli) { printResult(); printBoard(); } /* Print board in CLI mode  */
       if (force == 0) {                           /* Search best move         */
-        tick = getTimeMs();                       /* Start timer              */
-        stop = 0;                                 /* Reset stop flag          */
-        nodes = 0;                                /* Reset position count     */
-        memset(pvTable,0,sizeof(pvTable));        /* Reset PV table           */
-        memset(pvLength,0,sizeof(pvLength));      /* Reset PV length table    */
-        memset(killMoves,0,sizeof(killMoves));    /* Reset killers table      */
-        memset(histScores,0,sizeof(histScores));  /* Reset history table      */
-        Move pvMove = { 0 };                      /* Init PV move holder      */
-        for (int d = 1; d <= sd; d++) {           /* Iterative deepening      */
-          int s = search(d, 0, -50000, 50000);    /* Search best move         */
-          if (stop) break;                        /* Time is up or game over  */
-          pvMove = pvTable[0][0];                 /* Record last best move    */
-          if (post) { printf("%d %d %d %d ",      /* Engine search output     */
-            d, s, (getTimeMs()-tick)/10, nodes);  /* depth/score/time/nodes   */
-          for (int i = 0; i < pvLength[0]; i++) { /* Loop over PV line        */
-            Move move = pvTable[0][i];            /* Get PV move              */
-            printMove(move);                      /* Print PV move            */
-            if (i < pvLength[0] - 1)              /* Not the last PV move     */
-              printf(" ");                        /* Print separator          */
-          } printf("\n");                         /* Print new line           */
-          } if (abs(s) > 48000) break;            /* Stop if found mate       */
-        } if (pvMove.pce == 0) continue;          /* No legal move to play    */
-        make(pvMove); printf("move ");            /* Make best lst PV move    */
-        printMove(pvMove); printf("\n");          /* Print best move          */
-        if (cli) { printResult(); printBoard(); } /* Print board in CLI mode  */
-        fflush(stdout);                           /* Flush output             */
+        think();                                  /* No legal move to play    */
       } continue;                                 /* Read next command        */
-    } if (!strcmp(command, "undo")) {             /* Command "undo"           */
+    } if (!strcmp(command, "undo")) {             /* CECP command "undo"      */
       if (gamePly > 0) undo();                    /* Undo move if any         */
       if (cli) printBoard();                      /* Print board in CLI mode  */
       continue;                                   /* Process next command     */
@@ -738,13 +750,34 @@ int main() {                                      /* Xboard / Winboard driver */
       int time = getTimeMs() - tick;              /* Stop timer               */
       printf("nodes %d time %d\n", nodes, time);  /* Print result             */
       continue;                                   /* Read next command        */
-    } if (!strcmp(command, "board")) {            /* Extra command "board"    */
+    } if (!strcmp(command, "board")) {            /* CLI command "board"      */
       printBoard(); continue;                     /* Print board to console   */
     } if (!strcmp(command, "cli")) {              /* CLI play mode            */
       cli = 1; printf("CLI mode\n");              /* Enter CLI mode           */
       post = 0;                                   /* Do not print PV line     */
       printBoard();                               /* Print board to console   */
-    } if (!strcmp(command, "quit")) break;        /* Terminate engine         */
+    } if (!strcmp(command, "mode")) {             /* CLI command "mode"       */
+      printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
+    } if (!strcmp(command, "help")) {             /* CLI command "help"       */
+      printf("\nxboard\tXboard mode\n");          /*                          */
+      printf("cli\tCLI mode\n");                  /*                          */
+      printf("mode\tprint current mode\n");       /*                          */
+      printf("new\tstart new game\n");            /*                          */
+      printf("white\twhite to play\n");           /*                          */
+      printf("black\tblack to play\n");           /*                          */
+      printf("force\tedit mode\n");               /*                          */
+      printf("st 5000\tthink 5 sec per Move\n");  /*                          */
+      printf("sd 8\tSearch 8 plies deep\n");      /*  Command reference list  */
+      printf("post\tprint PV lines\n");           /*                          */
+      printf("nopost\tthink quietly\n");          /*                          */
+      printf("go\tmake engine move\n");           /*                          */
+      printf("e2e4\tmake user move\n");           /*                          */
+      printf("undo\tundo last move\n");           /*                          */
+      printf("perft 5\tperft depth 5\n");         /*                          */
+      printf("board\tprint board\n");             /*                          */
+      printf("help\tsee this reference\n");       /*                          */
+      printf("quit\tterminate program\n\n");      /*                          */
+    } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
   return 0;                                       /* Exit program             */
 }                                                 /*                          */
