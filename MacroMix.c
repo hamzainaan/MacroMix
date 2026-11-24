@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                               MacroMix, v1.0                               */
+/*                               MacroMix, v1.1                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */
@@ -9,6 +9,7 @@
 /*                                                                            */
 /* - Compact move generator inspired by H.G. Muller's micro-Max               */
 /* - Negamax search and internal opening book inspired by Tom Kerrigan's TSCP */
+/* - Null move pruning inspired by N. Blais' implementation in TSCP           */
 /* - Simplified evaluation function proposed by Tomasz Michniewski            */
 /* - Winboard/Xboard communication protocol                                   */
 /*                                                                            */
@@ -74,7 +75,7 @@ Move killMoves[2][64];                            /* Killer move ordering     */
 int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
 int cli = 1, post = 0, mps, inc;                  /*                          */
 /******************************************************************************/
-int material[] = { /* Piece weights */ 0, 20000, 100, 320, 330, 500, 900 }; /**/
+int material[] = { /* Piece weights */ 0, 0, 100, 320, 330, 500, 900 };     /**/
 int pst[7][128] = {{ 0 },                                                   /**/
   {    /* Kings in the opening */          /* Kings in the endgame */       /**/
     -30,-40,-40,-50,-50,-40,-40,-30,    -50,-40,-30,-20,-20,-30,-40,-50,    /**/
@@ -150,7 +151,8 @@ void think();                                     /* Play engine move         */
 void openBook();                                  /* Load opening book        */
 int bookMove();                                   /* Make book move           */
 void closeBook();                                 /* Close opening book       */
-int search(int depth,int ply,int alpha,int beta); /* Search all moves         */
+int search(int depth,int ply,                     /* Search all moves         */
+           int alpha,int beta, int null);         /*                          */
 int quiesce(int ply, int alpha, int beta);        /* Search only captures     */
 int eval();                                       /* Evaluate position        */
 void pickMove(MList *mList, int mv1);             /* Sort next move in a list */
@@ -435,7 +437,7 @@ void think() {                                    /* Engine move              */
   memset(histScores,0,sizeof(histScores));        /* Reset history table      */
   Move bestMove = { 0 };                          /* Init PV move holder      */
   for (int d = 1; d <= sd; d++) {                 /* Iterative deepening      */
-    int s = search(d, 0, -50000, 50000);          /* Search best move         */
+    int s = search(d, 0, -50000, 50000, 1);       /* Search best move         */
     if (stop) break;                              /* Time is up or game over  */
     bestMove = pvTable[0][0];                     /* Record last best move    */
     if (post) { printf("%d %d %d %d ",            /* Engine search output     */
@@ -454,8 +456,9 @@ void think() {                                    /* Engine move              */
   fflush(stdout);                                 /* Flush output             */
 }                                                 /*                          */
 /******************************************************************************/
-int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
-  if (stop) return 0;                             /* Count searched positions */
+int search(int depth, int ply,                    /* Negamax search           */
+           int alpha, int beta, int null) {       /*                          */
+  if (stop) return 0;                             /* Time is up, return       */
   int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
   if (depth == 0)                                 /* Main search is done      */
@@ -470,14 +473,36 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
-  MList mList; genMoves(&mList, 0);               /* Generate moves           */
+  if (check == 0 && ply && null) {                /* Null move pruning        */
+    int matScore = 0;                             /* Material score           */
+    for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
+      if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
+      int pce = board[sq], pceType = pce & 7;     /* Get piece. extract type  */
+      if (pce && pceType != 1 && (pce & side)) {  /* Pieces of side to move   */
+        matScore += material[pceType];            /* Count all but pawns      */
+      }                                           /*                          */
+    } int rDepth = (matScore > 1500) ? 2 : 1;     /* Calculat reduce depth    */
+    if (depth > rDepth && matScore > 1300) {      /* Null move threshold      */
+      int oldSide = side, oldEp = ep;             /*                          */
+      int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
+      int oldFifty = fifty;                       /*                          */
+      side = 24 - side;                           /* Swap the side            */
+      int score = -search(depth - 1 - rDepth,     /* Use reduced depth        */
+                   ply+1,-beta,-beta+1, 0);       /* Negamax search           */
+      side = oldSide, ep = oldEp;                 /*                          */
+      castle = oldCastle, hash = oldHash;         /* Restore position state   */
+      fifty = oldFifty;                           /*                          */
+      if (stop) return 0;                         /* Time is up, return       */
+      if (score >= beta) return beta;             /* Beta cutoff              */
+    }                                             /*                          */
+  } MList mList; genMoves(&mList, 0);             /* Generate moves           */
   scoreMoves(&mList, ply);                        /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     legalMoves++;                                 /* Count legal moves        */
-    score = -search(depth-1,ply+1,-beta,-alpha);  /* Negamax search           */
+    score =-search(depth-1,ply+1,-beta,-alpha,1); /* Negamax search           */
     undo();                                       /* Take move back           */
     if (stop) return 0;                           /* Time is up, return       */
     if (score > alpha) {                          /* Found a better move      */
@@ -545,15 +570,14 @@ int eval() {                                      /* Static evaluation        */
     int pceType = pce & 7;                        /* Extract piece type       */
     if (pce == 9) kingWhite = sq;                 /* Remember white king      */
     if (pce == 17) kingBlack = sq;                /* Remember black king      */
-    if (pceType == 1) continue;                   /* Skip kings               */
     if (pce & 8) matWhite += material[pceType];   /* Count white material     */
     if (pce & 16) matBlack += material[pceType];  /* Count black material     */
     if (pce & 8)                                  /* White piece              */
       score += pst[pceType][sq];                  /* White positional score   */
     if (pce & 16)                                 /* Black piece              */
       score -= pst[pceType][sq ^ 112];            /* Black positional score   */
-  } if (matWhite < 1200) kingWhite += 8;          /* White king in an endgame */
-  if (matBlack < 1200) kingBlack += 8;            /* Black king in an endgame */
+  } if (matWhite < 1350) kingWhite += 8;          /* White king in an endgame */
+  if (matBlack < 1350) kingBlack += 8;            /* Black king in an endgame */
   score += matWhite + pst[1][kingWhite];          /* White material and king  */
   score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
   return (side == 8) ? score : -score;            /* Side respective score    */
