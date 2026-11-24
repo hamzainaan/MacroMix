@@ -135,6 +135,15 @@ int pst[7][128] = {{ 0 },                                                   /**/
   }                                                                         /**/
 };                                                                          /**/
 /******************************************************************************/
+/*                                  Functions                                 */
+/*                                                                            */
+/******************************************************************************/
+void genMoves(MList *mList, int caps);
+int inCheck(int color);
+int reps();
+int make(Move move);
+void undo();
+/******************************************************************************/
 /*                                   Output                                   */
 /*                                                                            */
 /******************************************************************************/
@@ -167,6 +176,24 @@ void printMove(Move move) {                       /* Print move to console    */
   (move.dst & 7) + 'a',                           /* Target file              */
   8 - ((move.dst >> 4) & 7) + '0',                /* Target rank              */
   "\0--nbrq" + move.prom);                        /* Promoted piece           */
+}                                                 /*                          */
+/******************************************************************************/
+void printResult() {                              /* Game result              */
+  MList mList; genMoves(&mList, 0);               /* Generate moves           */
+  int legalMoves = 0;                             /* Legal moves counter      */
+  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */
+    if (make(mList.moves[i]) == 0) continue;      /* Make only legal moves    */
+    legalMoves++; undo();                         /* Count moves, take back   */
+  } if (legalMoves == 0) {                        /* No legal moves to make   */
+    if (inCheck(side)) {                          /* Side to move in check    */
+      if (side == 8) {                            /* White in check           */
+        printf("0-1 {Black mates}\n");            /* Black wins               */
+      } else printf("1-0 {White mates}\n");       /* Otherwise white wins     */
+    } else printf("1/2-1/2 {Stalemate}\n");       /* Draw by stalemate        */
+  } else if (reps() == 2) {                       /* Three fold repetition    */
+    printf("1/2-1/2 {Draw by repetition}\n");     /* Draw by repetition       */
+  } else if (fifty >= 100)                        /* Fifty move rule          */
+  printf("1/2-1/2 {Draw by fifty move rule}\n");  /* Draw by fifty move rule  */
 }                                                 /*                          */
 /******************************************************************************/
 /*                               Move generator                               */
@@ -285,8 +312,8 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
-int inCheck(int col) {                            /* Is king in check ?       */
-  return attack(kingSq[col >> 4], 24 - col);      /* King attacked by enemy?  */
+int inCheck(int color) {                          /* Is king in check ?       */
+  return attack(kingSq[color >> 4], 24 - color);  /* King attacked by enemy?  */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Used for repetition      */
@@ -433,6 +460,14 @@ int eval() {                                      /* Static evaluation        */
 /*                                   Search                                   */
 /*                                                                            */
 /******************************************************************************/
+int reps() {                                      /* Repetition detection     */
+  int reps = 0;                                   /* Position repetitions     */
+  for (int i = gamePly - 2;                       /* Loop over game history   */
+       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
+    if (game[i].hash == hash) reps++;             /* Found repetition         */
+  return reps;                                    /* Times position repeats   */
+}                                                 /*                          */
+/******************************************************************************/
 void sortMoves(MList *mList, int ply) {           /* Move scoring             */
   for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
     Move *move = &mList->moves[mv];               /* Get current move         */
@@ -482,7 +517,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (score > alpha) alpha = score;               /* Update alpha score       */
   MList mList; genMoves(&mList, 1);               /* Generate moves           */
   sortMoves(&mList, ply);                         /* Score moves              */
-  for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
+  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
@@ -512,19 +547,14 @@ int search(int depth,int ply,int alpha,int beta){ /* Negamax search           */
     if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
-  int reps = 0;                                   /* Position repetitions     */
-  for (int i = gamePly - 2;                       /* Loop over game history   */
-       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
-    if (game[i].hash == hash)                     /* Found current position   */
-      reps++;                                     /* Increment repetitions    */
-  if (ply && reps) return 0;                      /* 3 Fold repetition, draw  */
+  if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
   sortMoves(&mList, ply);                         /* Score moves              */
-  for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */  
+  for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
@@ -667,7 +697,7 @@ int main() {                                      /* Xboard / Winboard driver */
       } if (!legal && strcmp(command, "a8a8")) {  /* Not a legal user move    */
         printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
         continue;                                 /* Do not search            */
-      } if (cli) printBoard();                    /* Print board in CLI mode  */
+      } if (cli) { printResult(); printBoard(); } /* Print board in CLI mode  */
       if (force == 0) {                           /* Search best move         */
         tick = getTimeMs();                       /* Start timer              */
         stop = 0;                                 /* Reset stop flag          */
@@ -693,7 +723,7 @@ int main() {                                      /* Xboard / Winboard driver */
         } if (pvMove.pce == 0) continue;          /* No legal move to play    */
         make(pvMove); printf("move ");            /* Make best lst PV move    */
         printMove(pvMove); printf("\n");          /* Print best move          */
-        if (cli) printBoard();                    /* Print board in CLI mode  */
+        if (cli) { printResult(); printBoard(); } /* Print board in CLI mode  */
         fflush(stdout);                           /* Flush output             */
       } continue;                                 /* Read next command        */
     } if (!strcmp(command, "undo")) {             /* Command "undo"           */
