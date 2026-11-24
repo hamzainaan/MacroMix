@@ -761,22 +761,22 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "help")) {             /* CLI command "help"       */
       printf("\nxboard\tXboard mode\n");          /*                          */
       printf("cli\tCLI mode\n");                  /*                          */
-      printf("mode\tprint current mode\n");       /*                          */
+      printf("mode\tcurrent mode\n");             /*                          */
       printf("new\tstart new game\n");            /*                          */
       printf("white\twhite to play\n");           /*                          */
       printf("black\tblack to play\n");           /*                          */
       printf("force\tedit mode\n");               /*                          */
-      printf("st 5000\tthink 5 sec per Move\n");  /*                          */
-      printf("sd 8\tSearch 8 plies deep\n");      /*  Command reference list  */
+      printf("st 5000\tfixed time\n");            /*                          */
+      printf("sd 8\tfixed depth\n");              /*  Command reference list  */
       printf("post\tprint PV lines\n");           /*                          */
       printf("nopost\tthink quietly\n");          /*                          */
-      printf("go\tmake engine move\n");           /*                          */
-      printf("e2e4\tmake user move\n");           /*                          */
-      printf("undo\tundo last move\n");           /*                          */
+      printf("go\tengine move\n");                /*                          */
+      printf("e2e4\tuser move\n");                /*                          */
+      printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
       printf("board\tprint board\n");             /*                          */
-      printf("help\tsee this reference\n");       /*                          */
-      printf("quit\tterminate program\n\n");      /*                          */
+      printf("help\tthis reference\n");           /*                          */
+      printf("quit\texit program\n\n");           /*                          */
     } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
   return 0;                                       /* Exit program             */
