@@ -234,8 +234,8 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
           if (caps == 0)                          /* Generate all moves       */
           mList->moves[mList->count++] = (Move) { /* Add all promotion        */
             src, dst, capSq, pce, capPce, prom, 0 /* Move contents            */
-          }; else if (caps && capPce)             /* Generate only captures   */
-          mList->moves[mList->count++] = (Move) { /* Add only captures        */
+          }; else if (capPce || prom == 6)        /* Captures & queen promos  */
+          mList->moves[mList->count++] = (Move) { /* Add tactical moves       */
             src, dst, capSq, pce, capPce, prom, 0 /* Move contents            */
           };}} else if (caps == 0)                /* Generate all moves       */
           mList->moves[mList->count++] = (Move) { /* Add all moves            */
