@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                                  MacroMix                                  */
+/*                               MacroMix, v1.0                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */
@@ -8,7 +8,7 @@
 /*                                  Contents                                  */
 /*                                                                            */
 /* - Compact move generator inspired by H.G. Muller's micro-Max               */
-/* - Negamax search with alpha-beta pruning inspired by Tom Kerrigan's TSCP   */
+/* - Negamax search and internal opening book inspired by Tom Kerrigan's TSCP */
 /* - Simplified evaluation function proposed by Tomasz Michniewski            */
 /* - Winboard/Xboard communication protocol                                   */
 /*                                                                            */
@@ -20,6 +20,7 @@
 #include <stdlib.h>                               /* Function abs()           */
 #include <string.h>                               /* String parsing           */
 #include <signal.h>                               /* Preventing interrupt     */
+#include <time.h>                                 /* Random book moves seed   */
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
 #else                                             /*                          */
@@ -45,6 +46,8 @@ typedef struct {                                  /*                          */
   Move move;                                      /* Game move                */
   int side, ep, castle, fifty, hash;              /* Position state snapshot  */
 } Game;                                           /*                          */
+/******************************************************************************/
+FILE *bookFile;                                   /* Opening book file        */
 /******************************************************************************/
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
@@ -144,6 +147,9 @@ int make(Move move);                              /* Make move on board       */
 void undo();                                      /* Undo move on board       */
 void perft(int d);                                /* Perft testing            */
 void think();                                     /* Play engine move         */
+void openBook();                                  /* Load opening book        */
+int bookMove();                                   /* Make book move           */
+void closeBook();                                 /* Close opening book       */
 int search(int depth,int ply,int alpha,int beta); /* Search all moves         */
 int quiesce(int ply, int alpha, int beta);        /* Search only captures     */
 int eval();                                       /* Evaluate position        */
@@ -154,8 +160,10 @@ int inCheck(int color);                           /* Side to move under check */
 void setHash();                                   /* Encode board position    */
 int getTimeMs();                                  /* Get time in ms           */
 void printBoard();                                /* Print board to           */
-void printMove(Move move);                        /* Print move               */
+char *moveStr(Move move);                         /* Get move string          */
+char *gameStr();                                  /* Get game moves string    */
 void printResult();                               /* Print game result        */
+Move parseMove(char *moveStr);                    /* Parse move string        */
 /******************************************************************************/
 /*                               Move generator                               */
 /*                                                                            */
@@ -364,10 +372,60 @@ void perft(int depth) {                           /* Move generator test      */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
+/*                                Opening book                                */
+/*                                                                            */
+/******************************************************************************/
+void openBook() {                                 /* Open book file           */
+  bookFile = fopen("book.txt", "r");              /* Read book file stream    */
+  if (bookFile == 0)                              /* No book file             */
+    printf("Opening book missing\n");             /* Inform user              */
+}                                                 /*                          */
+/******************************************************************************/
+int bookMove() {                                  /* Make book move if any    */
+  MList bookMoves;                                /* Create move list         */
+  bookMoves.count = 0;                            /* Reset move count         */
+  char bookLine[2048];                            /* Book line storage        */
+  char *gameLine = gameStr();                     /* Get game moves           */
+  if (bookFile != NULL) {                         /* Skip if no book file     */
+    fseek(bookFile, 0, SEEK_SET);                 /* Seek through book file   */
+    while (fgets(bookLine, 2048, bookFile)) {     /* Read book line from file */
+      int match = 1;                              /* Match line flag          */
+      for (int i = 0; i<strlen(gameLine); i++) {  /* Compare game line to     */
+        if (bookLine[i] == '\0' ||                /* each line                */
+            bookLine[i] != gameLine[i]) {         /* in the opening book      */
+          match = 0; break;                       /* End of book or mismatch  */
+        }                                         /*                          */
+      } if (match) {                              /* Game matches book line   */
+        char *next = &bookLine[strlen(gameLine)]; /* Extract next book move   */
+        Move move = parseMove(next);              /* Parse book move          */
+        bookMoves.moves[bookMoves.count] = move;  /* Add book move to list    */
+        bookMoves.count++;                        /* Increment move counter   */
+      }                                           /*                          */
+    }                                             /*                          */
+  } if (bookMoves.count == 0) return 0;           /* No book move found       */
+  srand(time(NULL));                              /* Set random seed          */
+  int rIndex = rand() % bookMoves.count;          /* Pick random move index   */
+  Move bestMove = bookMoves.moves[rIndex];        /* Pick random book move    */
+  make(bestMove);                                 /* Play book move on board  */
+  if (cli) printf("Book ");                       /* Print "Book" in CLI mode */
+  printf("move %s", moveStr(bestMove));           /* CECP move output         */
+  printf("\n");                                   /* Print best move          */
+  if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
+  fflush(stdout);                                 /* Flush output             */
+  return 1;                                       /* Found book move          */
+}                                                 /*                          */
+/******************************************************************************/
+void closeBook() {                                /* Close book file          */
+  if (bookFile)                                   /* Book file stream exists  */
+    fclose(bookFile);                             /* Close book file stream   */
+  bookFile = NULL;                                /* Free memory              */
+}                                                 /*                          */
+/******************************************************************************/
 /*                                   Search                                   */
 /*                                                                            */
 /******************************************************************************/
 void think() {                                    /* Engine move              */
+  if (bookMove()) return;                         /* Make book move if any    */
   tick = getTimeMs();                             /* Start timer              */
   stop = 0;                                       /* Reset stop flag          */
   nodes = 0;                                      /* Reset position count     */
@@ -375,23 +433,23 @@ void think() {                                    /* Engine move              */
   memset(pvLength,0,sizeof(pvLength));            /* Reset PV length table    */
   memset(killMoves,0,sizeof(killMoves));          /* Reset killers table      */
   memset(histScores,0,sizeof(histScores));        /* Reset history table      */
-  Move pvMove = { 0 };                            /* Init PV move holder      */
+  Move bestMove = { 0 };                          /* Init PV move holder      */
   for (int d = 1; d <= sd; d++) {                 /* Iterative deepening      */
     int s = search(d, 0, -50000, 50000);          /* Search best move         */
     if (stop) break;                              /* Time is up or game over  */
-    pvMove = pvTable[0][0];                       /* Record last best move    */
+    bestMove = pvTable[0][0];                     /* Record last best move    */
     if (post) { printf("%d %d %d %d ",            /* Engine search output     */
       d, s, (getTimeMs()-tick)/10, nodes);        /* depth/score/time/nodes   */
     for (int i = 0; i < pvLength[0]; i++) {       /* Loop over PV line        */
       Move move = pvTable[0][i];                  /* Get PV move              */
-      printMove(move);                            /* Print PV move            */
+      printf("%s", moveStr(move));                /* Print PV move            */
       if (i < pvLength[0] - 1)                    /* Not the last PV move     */
         printf(" ");                              /* Print separator          */
     } printf("\n");                               /* Print new line           */
     } if (abs(s) > 48000) break;                  /* Stop if found mate       */
-  } if (pvMove.pce == 0) return;                  /* No legal move to play    */
-  make(pvMove); printf("move ");                  /* Make best lst PV move    */
-  printMove(pvMove); printf("\n");                /* Print best move          */
+  } if (bestMove.pce == 0) return;                /* No legal move to play    */
+  make(bestMove); printf("move ");                /* Make best last PV move   */
+  printf("%s", moveStr(bestMove)); printf("\n");  /* Print best move          */
   if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
   fflush(stdout);                                 /* Flush output             */
 }                                                 /*                          */
@@ -597,13 +655,24 @@ void printBoard() {                               /* Print board to console   */
   } printf("\n    a b c d e f g h\n\n");          /* Print files              */
 }                                                 /*                          */
 /******************************************************************************/
-void printMove(Move move) {                       /* Print move to console    */
-  printf("%c%c%c%c%.1s",                          /* Report best move to GUI  */
-  (move.src & 7) + 'a',                           /* Source file              */
-  8 - ((move.src >> 4) & 7) + '0',                /* Source rank              */
-  (move.dst & 7) + 'a',                           /* Target file              */
-  8 - ((move.dst >> 4) & 7) + '0',                /* Target rank              */
-  "\0--nbrq" + move.prom);                        /* Promoted piece           */
+char *moveStr(Move move) {                        /* Convert move to string   */
+  static char mStr[5];                            /* Move string              */
+  mStr[0] = (move.src & 7) + 'a',                 /* Source file              */
+  mStr[1] = 8 - ((move.src >> 4) & 7) + '0',      /* Source rank              */
+  mStr[2] = (move.dst & 7) + 'a',                 /* Target file              */
+  mStr[3] = 8 - ((move.dst >> 4) & 7) + '0',      /* Target rank              */
+  mStr[4] = "\0--nbrq"[move.prom];                /* Promoted piece           */
+  return mStr;                                    /* Return move string       */
+}                                                 /*                          */
+/******************************************************************************/
+char *gameStr() {                                 /* Game moves sequence      */
+  static char gStr[2048];                         /* Game moves string        */
+  int len = 0;                                    /* Offset length            */
+  gStr[0] = '\0';                                 /* Reset moves string       */
+  for (int i = 0; i < gamePly; i++) {             /* Loop over game moves     */
+    len += sprintf(gStr + len, "%s ",             /* Update move offset       */
+           moveStr(game[i].move));                /* Read next move           */
+  } return gStr;                                  /* Return game string       */
 }                                                 /*                          */
 /******************************************************************************/
 void printResult() {                              /* Game result              */
@@ -624,11 +693,43 @@ void printResult() {                              /* Game result              */
   printf("1/2-1/2 {Draw by fifty move rule}\n");  /* Draw by fifty move rule  */
 }                                                 /*                          */
 /******************************************************************************/
+Move parseMove(char *moveStr) {                   /* Parse move string        */
+  Move illegal = { 0 };                           /* No move                  */
+  int srcFile = moveStr[0] - 'a';                 /* Extract source file      */
+  int srcRank = 8 - (moveStr[1] - '0');           /* Extract source rank      */
+  int dstFile = moveStr[2] - 'a';                 /* Extract target file      */
+  int dstRank = 8 - (moveStr[3] - '0');           /* Extract target rank      */
+  int src = srcRank * 16 + srcFile;               /* Calculate source square  */
+  int dst = dstRank * 16 + dstFile;               /* Calculate target square  */
+  int prom = moveStr[4] & 0x5f;                   /* Extract promoted piece   */
+  if (prom) {                                     /* Promoted piece available */
+    switch (prom) {                               /* Process promoted piece   */
+      case 'Q': prom = 6; break;                  /* Promoted piece is Queen  */
+      case 'R': prom = 5; break;                  /* Promoted piece is Rook   */
+      case 'B': prom = 4; break;                  /* Promoted piece is Bishop */
+      case 'N': prom = 3; break;                  /* Promoted piece is Knight */
+      default: prom = 0;                          /* No promotion is default  */
+    }                                             /*                          */
+  } MList mList; genMoves(&mList, 0);             /* Generate moves           */
+  for (int i = 0; i < mList.count; i++) {         /* Loop over moves          */
+    Move move = mList.moves[i];                   /* Get current move         */
+    if (src == move.src &&                        /* User move matches        */
+        dst == move.dst &&                        /* generated move           */
+        prom == move.prom) {                      /* from the move list       */
+      if (make(move)) {                           /* Legallity check          */
+        undo();                                   /* Undo legal move          */
+        return move;                              /* Return legal move        */
+      }                                           /*                          */
+    }                                             /*                          */
+  } return illegal;                               /* Return illegal move      */
+}                                                 /*                          */
+/******************************************************************************/
 /*                               CECP Protocol                                */
 /*                                                                            */
 /******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
+  openBook();                                     /* Load opening book        */
   printf("MacroMix by CMK\n");                    /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[80] = "new";                         /* Run "new" to init engine */
@@ -638,6 +739,13 @@ int main() {                                      /* Xboard / Winboard driver */
     sscanf(input, "%31[^\n]", command);           /* Read user command        */
     if (!strcmp(command, "xboard")) {             /* CECP command "xboard"    */
       cli = 0; post = 1; continue;                /* Print PV by default      */
+    } if (!strcmp(command, "cli")) {              /* CLI play mode            */
+      cli = 1; printf("CLI mode\n");              /* Enter CLI mode           */
+      post = 0;                                   /* Do not print PV line     */
+      printBoard(); continue;                     /* Print board to console   */
+    } if (!strcmp(command, "mode")) {             /* CLI command "mode"       */
+      printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
+      continue;                                   /* Process next command     */
     } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
       printf("feature done=1\n");                 /* Prevent GUI delay        */
     } if (!strcmp(command, "new")) {              /* CECP command "new"       */
@@ -702,39 +810,17 @@ int main() {                                      /* Xboard / Winboard driver */
       post = 0; continue;                         /* Unset print PV flag      */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
-      command[1] = '9';                           /* Fake illegal move        */
+      think(); continue;                          /* Make engine move         */             
     } if (command[0] >= 'a' &&                    /*                          */
           command[0] <= 'z' &&                    /* If command is a move     */
           command[1] >= '0' &&                    /* in format "e2e4"         */
           command[1] <= '9') {                    /*                          */
-      int srcFile = command[0] - 'a';             /* Extract source file      */
-      int srcRank = 8 - (command[1] - '0');       /* Extract source rank      */
-      int dstFile = command[2] - 'a';             /* Extract target file      */
-      int dstRank = 8 - (command[3] - '0');       /* Extract target rank      */
-      int src = srcRank * 16 + srcFile;           /* Calculate source square  */
-      int dst = dstRank * 16 + dstFile;           /* Calculate target square  */
-      int prom = command[4] & 0x5f;               /* Extract promoted piece   */
-      if (prom) {                                 /* Promoted piece available */
-        switch (prom) {                           /* Process promoted piece   */
-          case 'Q': prom = 6; break;              /* Promoted piece is Queen  */
-          case 'R': prom = 5; break;              /* Promoted piece is Rook   */
-          case 'B': prom = 4; break;              /* Promoted piece is Bishop */
-          case 'N': prom = 3; break;              /* Promoted piece is Knight */
-          default: prom = 6;                      /* Queen is default         */
-        }                                         /*                          */
-      } MList mList; genMoves(&mList, 0);         /* Generate moves           */
-      int legal = 0;                              /* User move legality       */
-      for (int i = 0; i < mList.count; i++) {     /* Loop over moves          */
-        Move move = mList.moves[i];               /* Get current move         */
-        if (src == move.src &&                    /*                          */
-            dst == move.dst &&                    /* User move is in the list */
-            prom == move.prom) {                  /*                          */
-          setHash(); legal = make(move); break;   /* Make move if legal       */
-        }                                         /*                          */
-      } if (!legal && strcmp(command, "g9")) {    /* Not a legal user move    */
+      Move move = parseMove(command);             /* Parse user move          */
+      if (move.pce == 0) {                        /* Not a legal user move    */
         printf("Illegal move: %s\n", command);    /* Report it to the GUI     */
         continue;                                 /* Do not search            */
-      } if (cli) { printResult(); printBoard(); } /* Print board in CLI mode  */
+      } else { setHash(); make(move); }           /* Make user move           */
+      if (cli) { printResult(); printBoard(); }   /* Print board in CLI mode  */
       if (force == 0) {                           /* Search best move         */
         think();                                  /* No legal move to play    */
       } continue;                                 /* Read next command        */
@@ -752,12 +838,8 @@ int main() {                                      /* Xboard / Winboard driver */
       continue;                                   /* Read next command        */
     } if (!strcmp(command, "board")) {            /* CLI command "board"      */
       printBoard(); continue;                     /* Print board to console   */
-    } if (!strcmp(command, "cli")) {              /* CLI play mode            */
-      cli = 1; printf("CLI mode\n");              /* Enter CLI mode           */
-      post = 0;                                   /* Do not print PV line     */
-      printBoard();                               /* Print board to console   */
-    } if (!strcmp(command, "mode")) {             /* CLI command "mode"       */
-      printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
+    } if (!strcmp(command, "game")) {             /* CLI command "moves"      */
+      printf("%s\n", gameStr()); continue;        /* Print game moves         */
     } if (!strcmp(command, "help")) {             /* CLI command "help"       */
       printf("\nxboard\tXboard mode\n");          /*                          */
       printf("cli\tCLI mode\n");                  /*                          */
@@ -775,10 +857,12 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
       printf("board\tprint board\n");             /*                          */
+      printf("game\tprint moves\n");              /*                          */
       printf("help\tthis reference\n");           /*                          */
       printf("quit\texit program\n\n");           /*                          */
+      continue;                                   /* Process next command     */
     } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
   } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
-  return 0;                                       /* Exit program             */
+  closeBook(); return 0;                          /* Close opening book, exit */
 }                                                 /*                          */
 /******************************************************************************/
