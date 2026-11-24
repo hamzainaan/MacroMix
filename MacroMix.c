@@ -227,7 +227,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
           if (!((dst - src) & 7) && capPce)       /* Pawn moves only forward  */
             break;                                /* Stop otherwise           */
           if (((dst - src) & 7) &&                /* Pawn captures diagonally */
-              capPce == 0 && capSq != ep) break;  /* Stop otherwise           */
+              capPce == 0) break;                 /* Stop otherwise           */
         } if (pceType == 2 &&                     /* Piece is a pawn          */
           ((dst >> 4) == (side == 8 ? 0 : 7))) {  /* Pawn is promoting        */
           for (int prom = 6; prom > 2; prom--) {  /* Loop over promotoins     */
