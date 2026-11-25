@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                               MacroMix, v1.1                               */
+/*                               MacroMix, v1.3                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */
@@ -30,7 +30,7 @@
 /******************************************************************************/
 /*                                Definitions                                 */
 /*                                                                            */
-/******************************************************************************/ 
+/******************************************************************************/
 typedef struct {                                  /*                          */
   int src, dst, capSq;                            /* Move & captured squares  */
   int pce, capPce;                                /* Attacker & victim pieces */ 
@@ -47,6 +47,14 @@ typedef struct {                                  /*                          */
   Move move;                                      /* Game move                */
   int side, ep, castle, fifty, hash;              /* Position state snapshot  */
 } Game;                                           /*                          */
+/******************************************************************************/
+typedef struct {                                  /*                          */
+    int key;                                      /* Position key             */
+    int score;                                    /* Position score           */
+    int depth;                                    /* Position depth           */
+    int flag;                                     /* Score type               */
+    Move move;                                    /* Position move            */
+} TTEntry;                                        /*                          */
 /******************************************************************************/
 FILE *bookFile;                                   /* Opening book file        */
 /******************************************************************************/
@@ -71,6 +79,8 @@ int pvLength[64];                                 /* PV length at given ply   */
 Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
+#define TT_SIZE (1 << 16)                         /* Transposition table size */
+TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
 int flip, cli = 1, post = 0, mps, inc;            /*                          */
@@ -160,6 +170,10 @@ void scoreMoves(MList *mList, int ply);           /* Score moves in order     */
 int reps();                                       /* Find move repetitions    */
 int inCheck(int color);                           /* Side to move under check */
 void setHash();                                   /* Encode board position    */
+void ttStore(int key, int depth, int score,       /* Store move to            */
+             int flag, int ply);                  /* transposition table      */
+int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
+            int beta, int *score, int ply);       /* transposition table      */
 int getTimeMs();                                  /* Get time in ms           */
 void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
@@ -460,6 +474,7 @@ void think() {                                    /* Engine move              */
 int search(int depth, int ply,                    /* Negamax search           */
            int alpha, int beta, int null) {       /*                          */
   if (stop) return 0;                             /* Time is up, return       */
+  int oldAlpha = alpha;                           /* Previous best score      */
   int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
   if (depth == 0)                                 /* Main search is done      */
@@ -470,6 +485,11 @@ int search(int depth, int ply,                    /* Negamax search           */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
+  int key  = hash ^ (side == 8 ?                  /* Get position key         */
+             0xAAAAAAAAu : 0x55555555u);          /* relative to side to move */                                
+  int ttHit = ttProbe(key, depth, alpha, beta,    /* Read TT entry            */
+                                 &score, ply);    /*                          */
+  if (ply && ttHit) return score;                 /* Return TT score          */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
@@ -526,6 +546,10 @@ int search(int depth, int ply,                    /* Negamax search           */
     if (check) return -49000 + ply;               /* In check, checkmate      */
     else return 0;                                /* Not in check, stalemate  */
   } if (fifty >= 100) return 0;                   /* Fifty move draw          */
+  int flag = 0;                                   /* Hash exact score flag    */
+  if (alpha <= oldAlpha) flag = 1;                /* Hash alpha score flag    */
+  else if (alpha >= beta) flag = 2;               /* Hash beta score flag     */
+  ttStore(key, depth, alpha, flag, ply);          /* Write TT entry           */
   return alpha;                                   /* Return best score        */
 }                                                 /*                          */
 /******************************************************************************/
@@ -569,7 +593,45 @@ int eval() {                                      /* Static evaluation        */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
     int pce = board[sq];                          /* Get square contents      */
     int pceType = pce & 7;                        /* Extract piece type       */
-    if (pce == 9) kingWhite = sq;                 /* Remember white king      */
+    if (pceType == 2) {                           /* Pawn structure scoring   */
+        int oPawn = pce ^ 24;                     /* Enemy pawn               */
+        int dir = (pce == 10) ? -16 : 16;         /* Pawn move direction      */
+        int file = sq & 7;                        /* Pawn file                */
+        int rank = sq >> 4;                       /* Pawn rank                */
+        int isolated = 1;                         /* Isolated pawn flag       */
+        int passed = 1;                           /* Passed pawn flag         */
+        if (board[sq + dir] == pce) {             /* On doubled pawns         */
+            if (pce == 10) score -= 20;           /* Give penalty to white    */
+            else score += 20;                     /* Give penalty to black    */
+        } for (int r = 0; r < 8; r++) {           /* Loop over adjacent file  */
+            if (file > 0 &&                       /* Not A-file               */
+              board[r * 16 + file - 1] == pce)    /* No friendly pawn left    */
+              isolated = 0;                       /* Pawn is isolated         */
+            if (file < 7 &&                       /* Not H-file               */
+              board[r * 16 + file + 1] == pce)    /* No friendly pawn right   */
+              isolated = 0;                       /* Pawn is isolated         */
+        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check enemy pawns ahead  */
+             r >= 0 && r < 8;                     /* on same and              */
+             r += (dir < 0 ? -1 : 1)) {           /* adjacent files           */
+            if (board[r * 16 + file] == oPawn)    /* Enemy pawn on same file  */
+              passed = 0;                         /* Pawn is not passed       */
+            if (file > 0 &&                       /* Not A-file               */
+              board[r * 16 + file - 1] == oPawn)  /* Enemy pawn left          */
+              passed = 0;                         /* Pawn is not passed       */
+            if (file < 7 &&                       /* Not H-file               */
+              board[r * 16 + file + 1] == oPawn)  /* Enemy pawn right         */
+              passed = 0;                         /* Pawn is not passing      */
+        } if (isolated) {                         /* Pawn is isolated         */
+            if (pce == 10) score -= 20;           /* Give penalty to white    */
+            else score += 20;                     /* Give penalty to black    */
+        } if (passed) {                           /* Pawn is passed           */
+            int adv = (pce == 10) ?               /* For both colors          */
+                6 - rank : rank - 1;              /* Calculate pawn rank      */
+            int bonus = 30 + adv * adv * 5;       /* Passed pawn bonus        */
+            if (pce == 10) score += bonus;        /* Give bonus to white      */
+            else score -= bonus;                  /* Give bonus to black      */
+        }                                         /*                          */
+    } if (pce == 9) kingWhite = sq;               /* Remember white king      */
     if (pce == 17) kingBlack = sq;                /* Remember black king      */
     if (pce & 8) matWhite += material[pceType];   /* Count white material     */
     if (pce & 16) matBlack += material[pceType];  /* Count black material     */
@@ -643,6 +705,35 @@ void setHash() {                                  /* Encode board position    */
     if (col >= 0)                                 /* Piece is not empty       */
       hash ^= hashPiece[col][pce & 7][sq];        /* Hash piece               */
   }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+void ttStore(int key, int depth, int score,       /* Write entry to TT        */
+                      int flag, int ply) {        /*                          */
+    TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
+    if (depth >= e->depth || e->key != key) {     /* Replace old entry        */
+        e->key = key;                             /* Write position key       */
+        if (score > 48000) score += ply;          /* Normalize winning score  */
+        else if (score < -48000) score -= ply;    /* Normalize loosing score  */
+        e->score = score;                         /* Write score              */
+        e->depth = depth;                         /* Write depth              */
+        e->flag = flag;                           /* Write score type flag    */
+    }                                             /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int ttProbe(int key, int depth, int alpha,        /* Read entry from TT       */
+            int beta, int *score, int ply) {      /*                          */
+    TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
+    if (e->key != key) return 0;                  /* Skip on key mismatch     */
+    if (e->depth < depth) return 0;               /* Skip on depth mismatch   */
+    int ttScore = e->score;                       /* Init TT score            */
+    if (ttScore > 48000) ttScore -= ply;          /* Normalize winning score  */
+    else if (ttScore < -48000) ttScore += ply;    /* Normalize loosing score  */
+    if (e->flag == 0 ||                           /* Exact score flag match   */
+        (e->flag == 1 && ttScore <= alpha) ||     /* Alpha score flag match   */
+        (e->flag == 2 && ttScore >= beta)) {      /* Beta score flag match    */
+        *score = ttScore;                         /* Assign return score      */
+        return 1;                                 /* Return TT hit            */
+    } return 0;                                   /* Return TT miss           */
 }                                                 /*                          */
 /******************************************************************************/
 int getTimeMs() {                                 /* Count time spent         */
@@ -812,7 +903,7 @@ void loadGame(char *moves) {                      /* Load user game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("MacroMix, v1.1 by CMK\n");              /* Engine info for GUI      */
+  printf("MacroMix, v1.3 by CMK\n");              /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[80] = "new";                         /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
@@ -945,7 +1036,7 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("board\tprint board\n");             /*                          */
       printf("flip\tflip board\n");               /*                          */
       printf("game\tprint moves\n");              /*                          */
-      printf("load\tload e2e4 e7e5\n");               /*                          */
+      printf("load\tload e2e4 e7e5\n");           /*                          */
       printf("help\tthis reference\n");           /*                          */
       printf("quit\texit program\n\n");           /*                          */
       continue;                                   /* Process next command     */
