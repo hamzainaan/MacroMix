@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                               MacroMix, v1.3                               */
+/*                               MacroMix, v1.4                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */
@@ -11,6 +11,9 @@
 /* - Negamax search and internal opening book inspired by Tom Kerrigan's TSCP */
 /* - Null move pruning inspired by N. Blais' implementation in TSCP           */
 /* - Simplified evaluation function proposed by Tomasz Michniewski            */
+/* - Simple 32-bit piece only Zobrist hashing                                 */
+/* - Fixed size (~1MB) Transposition table                                    */
+/* - Principle variation search                                               */
 /* - Winboard/Xboard communication protocol                                   */
 /*                                                                            */
 /******************************************************************************/
@@ -485,11 +488,12 @@ int search(int depth, int ply,                    /* Negamax search           */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
+  int pvNode = (beta - alpha) > 1;                /* Distinguish PV nodes     */
   int key  = hash ^ (side == 8 ?                  /* Get position key         */
              0xAAAAAAAAu : 0x55555555u);          /* relative to side to move */                                
   int ttHit = ttProbe(key, depth, alpha, beta,    /* Read TT entry            */
                                  &score, ply);    /*                          */
-  if (ply && ttHit) return score;                 /* Return TT score          */
+  if (ply && ttHit && pvNode == 0) return score;  /* Return TT score          */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
@@ -508,7 +512,7 @@ int search(int depth, int ply,                    /* Negamax search           */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
       int oldFifty = fifty;                       /*                          */
       side = 24 - side;                           /* Swap the side            */
-      int score = -search(depth - 1 - rDepth,     /* Use reduced depth        */
+      score = -search(depth - 1 - rDepth,         /* Use reduced depth        */
                    ply+1,-beta,-beta+1, 0);       /* Negamax search           */
       side = oldSide, ep = oldEp;                 /*                          */
       castle = oldCastle, hash = oldHash;         /* Restore position state   */
@@ -522,9 +526,17 @@ int search(int depth, int ply,                    /* Negamax search           */
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
+    if (legalMoves == 0)                          /* First move               */
+      score = -search(depth-1, ply+1,             /* Full window search       */
+                      -beta, -alpha, 1);          /*                          */
+    else {                                        /* Other moves              */
+        score = -search(depth-1, ply+1,           /* PVS null window search   */
+                        -alpha-1, -alpha, 1);     /*                          */
+        if (score > alpha && score < beta)        /* Found a better move      */
+            score = -search(depth-1, ply+1,       /* Full window re-search    */
+                            -beta, -alpha, 1);    /*                          */
+    } undo();                                     /* Take move back           */
     legalMoves++;                                 /* Count legal moves        */
-    score =-search(depth-1,ply+1,-beta,-alpha,1); /* Negamax search           */
-    undo();                                       /* Take move back           */
     if (stop) return 0;                           /* Time is up, return       */
     if (score > alpha) {                          /* Found a better move      */
       if (move.capPce == 0)                       /* Quiet move               */
@@ -903,7 +915,7 @@ void loadGame(char *moves) {                      /* Load user game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("MacroMix, v1.3 by CMK\n");              /* Engine info for GUI      */
+  printf("MacroMix, v1.4 by CMK\n");              /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[80] = "new";                         /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
