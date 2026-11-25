@@ -166,6 +166,7 @@ char *moveStr(Move move);                         /* Get move string          */
 char *gameStr();                                  /* Get game moves string    */
 void printResult();                               /* Print game result        */
 Move parseMove(char *moveStr);                    /* Parse move string        */
+void loadGame(char *moves);                       /* Load game from string    */
 /******************************************************************************/
 /*                               Move generator                               */
 /*                                                                            */
@@ -792,19 +793,32 @@ Move parseMove(char *moveStr) {                   /* Parse move string        */
   } return illegal;                               /* Return illegal move      */
 }                                                 /*                          */
 /******************************************************************************/
+void loadGame(char *moves) {                      /* Load user game           */
+  char *mStr = strtok(moves, " ");                /* Extract game moves       */
+  while (mStr != NULL) {                          /* Loop over game moves     */
+    Move move = parseMove(mStr);                  /* Parse move               */
+    if (move.pce == 0) {                          /* Illegal move             */
+      printf("Illegal move: %s\n", mStr);         /* Inform user              */
+      break;                                      /* Load no more moves       */
+    } make(move);                                 /* Load game move           */
+    mStr = strtok(NULL, " ");                     /* Extract next move        */
+  } printBoard();                                 /* Print board to console   */
+  printf("Game has been loaded\n");               /* Inform user game loaded  */
+}                                                 /*                          */
+/******************************************************************************/
 /*                               CECP Protocol                                */
 /*                                                                            */
 /******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("MacroMix by CMK\n");                    /* Engine info for GUI      */
+  printf("MacroMix, v1.1 by CMK\n");              /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[80] = "new";                         /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
   do {                                            /* User command loop        */
-    char command[32] = { 0 };                     /* User command storage     */                 
-    sscanf(input, "%31[^\n]", command);           /* Read user command        */
+    char command[2048] = { 0 };                   /* User command storage     */                 
+    sscanf(input, "%2047[^\n]", command);         /* Read user command        */
     if (!strcmp(command, "xboard")) {             /* CECP command "xboard"    */
       cli = 0; post = 1; continue;                /* Print PV by default      */
     } if (!strcmp(command, "cli")) {              /* CLI play mode            */
@@ -908,8 +922,10 @@ int main() {                                      /* Xboard / Winboard driver */
       printBoard(); continue;                     /* Print board to console   */
     } if (!strcmp(command, "flip")) {             /* CLI command "flip"       */
       flip ^= 1; printBoard(); continue;          /* Flip board view          */
-    } if (!strcmp(command, "game")) {             /* CLI command "moves"      */
+    } if (!strcmp(command, "game")) {             /* CLI command "game"       */
       printf("%s\n", gameStr()); continue;        /* Print game moves         */
+    } if (!strncmp(command, "load", 4)) {         /* CLI command "load"       */
+      loadGame(command + 5); continue;            /* Load user game           */
     } if (!strcmp(command, "help")) {             /* CLI command "help"       */
       printf("\nxboard\tXboard mode\n");          /*                          */
       printf("cli\tCLI mode\n");                  /*                          */
@@ -929,6 +945,7 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("board\tprint board\n");             /*                          */
       printf("flip\tflip board\n");               /*                          */
       printf("game\tprint moves\n");              /*                          */
+      printf("load\tload e2e4 e7e5\n");               /*                          */
       printf("help\tthis reference\n");           /*                          */
       printf("quit\texit program\n\n");           /*                          */
       continue;                                   /* Process next command     */
