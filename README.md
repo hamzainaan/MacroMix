@@ -1,5 +1,5 @@
 # MacroMix
-Xboard/Winboard Chess Engine
+Xboard/Winboard Chess Engine by CMK, Hamza Inaan
 
 # Description
 MacroMix is a compact, didactic chess engine combining the most
