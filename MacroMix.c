@@ -73,7 +73,7 @@ int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
-int cli = 1, post = 0, mps, inc;                  /*                          */
+int flip, cli = 1, post = 0, mps, inc;            /*                          */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 0, 100, 320, 330, 500, 900 };     /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -658,26 +658,70 @@ int getTimeMs() {                                 /* Count time spent         */
 /*                                                                            */
 /******************************************************************************/
 void printBoard() {                               /* Print board to console   */
-  printf("\n");                                   /* Print new line           */
-  for (int rank = 0; rank < 8; rank++) {          /* Loop over board ranks    */
-    for (int file = 0; file < 16; file++) {       /* Loop over board files    */
-      int sq = rank * 16 + file;                  /* Calculate current square */
-      if (file == 0) printf(" %d  ", 8 - rank);   /* Print ranks              */
-      if (!(sq & 0x88)) {                         /* Square is not offboard   */
-        #ifdef WIN64                              /* Use ASCII on windows     */
-        char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece letters      */
-        printf("%c ", p[board[sq] & 15]);         /* Print board square       */
-        #else                                     /* Use unicode otherwise    */
-        char *u[] = { ".", "\u265a", "\u265f",    /* Unicode piece characters */
-        "\u265e", "\u265d", "\u265c", "\u265b",   /*                          */
-        "-", "-", "\u2654", "\u2659", "\u2658",   /*                          */
-        "\u2657", "\u2656", "\u2655" };           /*                          */
-        printf("%s ", u[board[sq] & 15]);         /* Print board square       */
-        #endif                                    /*                          */
+  #ifdef WIN64                                    /* Windows ASCII version    */
+    printf("\n");                                 /* Print new line           */
+    for (int row = 0; row < 8; row++) {           /* Loop over board rows     */
+      for (int col = 0; col < 16; col++) {        /* Loop over board cols     */
+        if (col == 0)                             /* On board edge            */
+        printf(" %d  ", flip ? row + 1:8 - row);  /* Print row number         */
+        int file, rank;                           /* Flip file & rank holders */
+        if (flip) {                               /* Black's perspective view */
+          file = 8 - 1 - col;                     /* Mirror file              */
+          rank = 8 - 1 - row;                     /* Mirror rank              */
+        } else { file = col; rank = row; }        /* White's perspective view */
+        int sq = rank * 16 + file;                /* Calculate square index   */
+        if (sq & 0x88) continue;                  /* Skip offboard squares    */
+        char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece characters   */
+        printf("%c ", p[board[sq] & 15]);         /* Print piece              */
+      } printf("\n");                             /* Print new line           */
+    } if (flip == 0)                              /* Print files              */
+    printf("\n    a b c d e f g h\n\n");          /* White's perspective view */
+    else printf("\n    h g f e d c b a\n\n");     /* Black's perspective view */
+  #else                                           /* Linux Unicode version    */
+    const char *pieces[] = {                      /* Unicode chess pieces     */
+      " ", "\u265a", "\u265f", "\u265e",          /* Black king, pawn, knight */
+      "\u265d", "\u265c", "\u265b", " ",          /* Bishop, rook, queen      */
+      " ", "\u2654", "\u2659", "\u2658",          /* White king, pawn, knight */
+      "\u2657", "\u2656", "\u2655"                /* Bishop, rook, queen      */
+    }; printf("\n   \u2554");                     /* Print top-left corner    */
+    for (int col = 0; col < 8; col++)             /* Loop over board cols     */
+      printf("\u2550\u2550\u2550\u2566");         /* Print top edge           */
+    printf("\b\u2557\n");                         /* Print top-right corner   */
+    for (int row = 0; row < 8; row++) {           /* Loop over board rows     */
+    printf(" %d \u2551", flip ? row+1 : 8 - row); /* Print row and left edge  */
+      for (int col = 0; col < 8; col++) {         /* Loop over board cols     */
+        int file, rank;                           /* Flip file & rank holders */
+        if (flip) {                               /* Black's perspective view */
+          file = 8 - 1 - col;                     /* Mirror file              */
+          rank = 8 - 1 - row;                     /* Mirror file              */
+        } else { file = col; rank = row; }        /* White's perspective view */
+        int sq = rank * 16 + file;                /* Calculate square index   */
+        if (sq & 0x88) continue;                  /* Skip offboard squares    */
+        int piece = board[sq] & 15;               /* Get piece code           */
+        int light = (row + col) % 2 == 0;         /* Determine square color   */
+        if (piece) {                              /* If occupied square       */
+          printf(" %s ", pieces[piece]);          /* Print centered piece     */
+        } else {                                  /* Empty square             */
+          if (light) printf("   ");               /* Print light square       */
+          else printf(" . ");                     /* Print dark square        */
+        } printf("\033[0m\u2551");                /* Reset colors and border  */
+      } printf("\n");                             /* Print new line           */
+      if (row < 7) {                              /* Check if not last row    */
+        printf("   \u2560");                      /* Print left intersection  */
+        for (int col = 0; col < 8; col++)         /* Loop over board cols     */
+          printf("\u2550\u2550\u2550\u256C");     /* Print horizontal divider */
+        printf("\b\u2563\n");                     /* Print right intersection */
       }                                           /*                          */
-    } printf("\n");                               /* Print new line           */
-  } printf("\n    a b c d e f g h\n\n");          /* Print files              */
-}                                                 /*                          */
+    } printf("   \u255A");                        /* Print bottom-left corner */
+    for (int col = 0; col < 8; col++)             /* Loop over board cols     */
+      printf("\u2550\u2550\u2550\u2569");         /* Print bottom edge        */
+    printf("\b\u255D\n\n");                       /* Print corner             */
+    if (flip == 0) printf(                        /* Print files              */
+      "     a   b   c   d   e   f   g   h\n\n"    /* White's perspective view */
+    ); else printf(                               /*                          */
+      "     h   g   f   e   d   c   b   a\n\n");  /* Black's perspective view */
+  #endif                                          /* End platform check       */
+}                                                 /* End printBoard function  */
 /******************************************************************************/
 char *moveStr(Move move) {                        /* Convert move to string   */
   static char mStr[5];                            /* Move string              */
@@ -708,13 +752,13 @@ void printResult() {                              /* Game result              */
   } if (legalMoves == 0) {                        /* No legal moves to make   */
     if (inCheck(side)) {                          /* Side to move in check    */
       if (side == 8) {                            /* White in check           */
-        printf("0-1 {Black mates}\n");            /* Black wins               */
-      } else printf("1-0 {White mates}\n");       /* Otherwise white wins     */
-    } else printf("1/2-1/2 {Stalemate}\n");       /* Draw by stalemate        */
+        printf("0-1 { Black mates }\n");          /* Black wins               */
+      } else printf("1-0 { White mates }\n");     /* Otherwise white wins     */
+    } else printf("1/2-1/2 { Stalemate }\n");     /* Draw by stalemate        */
   } else if (reps() == 2) {                       /* Three fold repetition    */
-    printf("1/2-1/2 {Draw by repetition}\n");     /* Draw by repetition       */
+    printf("1/2-1/2 { Draw by repetition }\n");   /* Draw by repetition       */
   } else if (fifty >= 100)                        /* Fifty move rule          */
-  printf("1/2-1/2 {Draw by fifty move rule}\n");  /* Draw by fifty move rule  */
+ printf("1/2-1/2 { Draw by fifty move rule }\n"); /* Draw by fifty move rule  */
 }                                                 /*                          */
 /******************************************************************************/
 Move parseMove(char *moveStr) {                   /* Parse move string        */
@@ -862,6 +906,8 @@ int main() {                                      /* Xboard / Winboard driver */
       continue;                                   /* Read next command        */
     } if (!strcmp(command, "board")) {            /* CLI command "board"      */
       printBoard(); continue;                     /* Print board to console   */
+    } if (!strcmp(command, "flip")) {             /* CLI command "flip"       */
+      flip ^= 1; printBoard(); continue;          /* Flip board view          */
     } if (!strcmp(command, "game")) {             /* CLI command "moves"      */
       printf("%s\n", gameStr()); continue;        /* Print game moves         */
     } if (!strcmp(command, "help")) {             /* CLI command "help"       */
@@ -873,14 +919,15 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("black\tblack to play\n");           /*                          */
       printf("force\tedit mode\n");               /*                          */
       printf("st 5000\tfixed time\n");            /*                          */
-      printf("sd 8\tfixed depth\n");              /*  Command reference list  */
-      printf("post\tprint PV lines\n");           /*                          */
+      printf("sd 8\tfixed depth\n");              /*                          */
+      printf("post\tprint PV lines\n");           /* Command reference list   */
       printf("nopost\tthink quietly\n");          /*                          */
       printf("go\tengine move\n");                /*                          */
       printf("e2e4\tuser move\n");                /*                          */
       printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
       printf("board\tprint board\n");             /*                          */
+      printf("flip\tflip board\n");               /*                          */
       printf("game\tprint moves\n");              /*                          */
       printf("help\tthis reference\n");           /*                          */
       printf("quit\texit program\n\n");           /*                          */
