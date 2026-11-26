@@ -35,5 +35,4 @@ Time control 5+0.05, openings from the MacroMix book played with both colors,
 engine books disabled.
 
 # How to compile it?
-Simly run **make** or the explicit command:
-    **gcc -O3 MacroMix.c -o MacroMix**
+Simply run **make**
