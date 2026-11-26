@@ -1,3 +1,5 @@
+<div align="center">
+
 # MacroMix
 Xboard/Winboard Chess Engine by CMK
 
@@ -7,6 +9,8 @@ Xboard/Winboard Chess Engine by CMK
 [![Blitz rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.blitz.rating&label=Blitz&logo=lichess&logoColor=white&color=f59f00)](https://lichess.org/@/MacroMix/perf/blitz)
 [![Rapid rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.rapid.rating&label=Rapid&logo=lichess&logoColor=white&color=2f9e44)](https://lichess.org/@/MacroMix/perf/rapid)
 [![Classical rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.classical.rating&label=Classical&logo=lichess&logoColor=white&color=1971c2)](https://lichess.org/@/MacroMix/perf/classical)
+
+</div>
 
 # Description
 MacroMix is a compact, didactic chess engine combining the most
