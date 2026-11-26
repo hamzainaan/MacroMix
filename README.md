@@ -1,5 +1,16 @@
+<div align="center">
+
 # MacroMix
-Xboard/Winboard Chess Engine by CMK, Hamza Inaan
+Xboard/Winboard Chess Engine by CMK
+
+[![Play on Lichess](https://img.shields.io/badge/Play%20on-Lichess-white?style=for-the-badge&logo=lichess&logoColor=white)](https://lichess.org/?user=MacroMix#friend)
+
+[![Bullet rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.bullet.rating&label=Bullet&logo=lichess&logoColor=white&color=e8590c)](https://lichess.org/@/MacroMix/perf/bullet)
+[![Blitz rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.blitz.rating&label=Blitz&logo=lichess&logoColor=white&color=f59f00)](https://lichess.org/@/MacroMix/perf/blitz)
+[![Rapid rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.rapid.rating&label=Rapid&logo=lichess&logoColor=white&color=2f9e44)](https://lichess.org/@/MacroMix/perf/rapid)
+[![Classical rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.classical.rating&label=Classical&logo=lichess&logoColor=white&color=1971c2)](https://lichess.org/@/MacroMix/perf/classical)
+
+</div>
 
 # Description
 MacroMix is a compact, didactic chess engine combining the most
@@ -8,21 +19,34 @@ CECP-compatible engine.
 
 # Features
  - Compact move generator
- - PV, MVV/LVA, killer & history move ordering
+ - TT, PV, MVV/LVA, killer & history move ordering
  - Iterative deepening
  - Negamax with alpha-beta pruning
- - Quiescence search
+ - Principal variation search
+ - Null move pruning
+ - Late move reductions
+ - Reverse futility pruning
+ - Check extension
+ - Transposition table (~1MB) with Zobrist hashing
+ - Repetition & fifty move rule detection
+ - Quiescence search with delta pruning
  - Simplified evaluation function
+ - Pawn structure: doubled, isolated & passed pawns
+ - Texel tuned material, piece-square tables & pawn structure
  - Triangular PV
+ - Opening book with 240 lines up to 16 plies
+ - Configurable Makefile (engine name, version, author & compiler flags)
+ - CLI mode with board flip & game loading
+ - Infinite analysis mode
  - Basic Winboard/Xboard (CECP) support.
 
 # How strong is it?
-Version 1.4 beats TSCP 5.5-4.5
+| Version | Opponent   | Games | Wins | Losses | Draws | Score | Elo        |
+|---------|------------|-------|------|--------|-------|-------|------------|
+| 1.5     | TSCP 1.83b | 1000  | 885  | 57     | 58    | 91.4% | +411 ± 35 |
+
+Time control 5+0.05, openings from the MacroMix book played with both colors,
+engine books disabled.
 
 # How to compile it?
-Simly run **make** or the explicit command:
-    **gcc -O3 MacroMix.c -o MacroMix**
-
-# Credits
- - Many thanks to Hamza Inaan for numerous bug fixes and
-   making search about 2x faster.
+Simply run **make**

@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                               MacroMix, v1.4                               */
+/*                               MacroMix, v1.5                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */
@@ -27,8 +27,21 @@
 #include <time.h>                                 /* Random book moves seed   */
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
+  #include "conio.h"
 #else                                             /*                          */
   #include "sys/time.h"                           /* UNIX-like gettimeofday() */
+  #include "sys/select.h"
+#endif                                            /*                          */
+#ifndef ENGINE_NAME                               /*                          */
+  #define ENGINE_NAME "MacroMix"                  /*                          */
+#endif                                            /*                          */
+#ifdef ENGINE_VERSION                             /*                          */
+  #define ENGINE ENGINE_NAME ", v" ENGINE_VERSION /*                          */
+#else                                             /*                          */
+  #define ENGINE ENGINE_NAME "-dev"               /*                          */
+#endif                                            /*                          */
+#ifndef ENGINE_AUTHOR                             /*                          */
+  #define ENGINE_AUTHOR "CMK"                     /*                          */
 #endif                                            /*                          */
 /******************************************************************************/
 /*                                Definitions                                 */
@@ -63,7 +76,7 @@ FILE *bookFile;                                   /* Opening book file        */
 /******************************************************************************/
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
-int nodes;                                        /* Number of positions      */ 
+long long nodes;                                  /* Number of positions      */ 
 int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
@@ -82,73 +95,75 @@ int pvLength[64];                                 /* PV length at given ply   */
 Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
+Move bestMove;                                    /* Best move to play        */
 #define TT_SIZE (1 << 16)                         /* Transposition table size */
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
-int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
-int flip, cli = 1, post = 0, mps, inc;            /*                          */
+int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
+int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
+int analyze;
 /******************************************************************************/
-int material[] = { /* Piece weights */ 0, 0, 100, 320, 330, 500, 900 };     /**/
+int material[] = { /* Piece weights */ 0, 0, 100, 358, 397, 631, 1217 };    /**/
 int pst[7][128] = {{ 0 },                                                   /**/
   {    /* Kings in the opening */          /* Kings in the endgame */       /**/
-    -30,-40,-40,-50,-50,-40,-40,-30,    -50,-40,-30,-20,-20,-30,-40,-50,    /**/
-    -30,-40,-40,-50,-50,-40,-40,-30,    -30,-20,-10,  0,  0,-10,-20,-30,    /**/
-    -30,-40,-40,-50,-50,-40,-40,-30,    -30,-10, 20, 30, 30, 20,-10,-30,    /**/
-    -30,-40,-40,-50,-50,-40,-40,-30,    -30,-10, 30, 40, 40, 30,-10,-30,    /**/
-    -20,-30,-30,-40,-40,-30,-30,-20,    -30,-10, 30, 40, 40, 30,-10,-30,    /**/
-    -10,-20,-20,-20,-20,-20,-20,-10,    -30,-10, 20, 30, 30, 20,-10,-30,    /**/
-     20, 20,  0,  0,  0,  0, 20, 20,    -30,-30,  0,  0,  0,  0,-30,-30,    /**/
-     20, 30, 10,  0,  0, 10, 30, 20,    -50,-30,-30,-30,-30,-30,-30,-50     /**/
+    -177, 90, 48, -5,-103,-93, 23, 50,    -78,-56,-36,-35,-25,  6,-15,-21,  /**/
+     64, 52, 32, 42, 36, 78,  8, -7,    -13, 11,  0,  8,  6, 20, 10, -2,    /**/
+     28, 55, 65, 42, 32, 70, 83, 16,      1, 12, 10,  4,  4, 32, 32, -2,    /**/
+     14, 37, 30, 30, 14, 25, 19,-27,    -23,  9, 13, 13, 13, 18, 15, -9,    /**/
+    -24,  8, 25,  8, 19,  5, -4,-30,    -28,-13,  8, 10, 10,  9, -3,-27,    /**/
+    -10, 13, 16, 14, 15, 14, 11,-13,    -27,-16, -1,  4,  6,  0, -4,-22,    /**/
+     -7, 17, 10,-16, -3,  5, 12,  0,    -41,-23, -8, -5, -4, -9,-16,-32,    /**/
+    -40, 12,  5,-41, -8,-26,  8,-13,    -64,-39,-28,-27,-19,-24,-35,-53     /**/
   },                                                                        /**/
   {    /* Pawns */                                                          /**/
       0,  0,  0,  0,  0,  0,  0,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     50, 50, 50, 50, 50, 50, 50, 50,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     10, 10, 20, 30, 30, 20, 10, 10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      5,  5, 10, 25, 25, 10,  5,  5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      0,  0,  0, 20, 20,  0,  0,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      5, -5,-10,  0,  0,-10, -5,  5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      5, 10, 10,-20,-20, 10, 10,  5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     81, 80, 44, 30, 29, 39, 45, 74,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     46, 47, 27,  2,  7, 27, 39, 33,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     16, 13,  4,  3,  9,  6, 11,  5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+      0,  2, -1,  7,  7, -2,  1, -8,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -3, -3, -1, -9,  2,  1,  4, -7,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -6, -5,-12,-26,-13, 13,  9,-11,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
       0,  0,  0,  0,  0,  0,  0,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
   },                                                                        /**/
   {    /* Knights */                                                        /**/
-    -50,-40,-30,-30,-30,-30,-40,-50,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -40,-20,  0,  0,  0,  0,-20,-40,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -30,  0, 10, 15, 15, 10,  0,-30,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -30,  5, 15, 20, 20, 15,  5,-30,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -30,  0, 15, 20, 20, 15,  0,-30,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -30,  5, 10, 15, 15, 10,  5,-30,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -40,-20,  0,  5,  5,  0,-20,-40,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -50,-40,-30,-30,-30,-30,-40,-50,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -124,-52,-13,-29, -4,-49,-54,-124,      0,  0,  0,  0,  0,  0,  0,  0,  /**/
+    -41, -9, 22, 23, 14, 13, -6,-38,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -23, 25, 36, 48, 45, 45, 33, -7,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -3, 24, 39, 56, 49, 54, 29, 11,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -10, 10, 33, 33, 39, 34, 28, -1,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -19,  3, 22, 30, 31, 29, 19,-13,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -25,-23, -2,  8,  9, 15,-12,-18,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -58,-19,-29,-13,-11,-16,-17,-47,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
   },                                                                        /**/
   {    /* Bishops */                                                        /**/
-    -20,-10,-10,-10,-10,-10,-10,-20,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0,  0,  0,  0,  0,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0,  5, 10, 10,  5,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  5,  5, 10, 10,  5,  5,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0, 10, 10, 10, 10,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10, 10, 10, 10, 10, 10, 10,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  5,  0,  0,  0,  0,  5,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -20,-10,-10,-10,-10,-10,-10,-20,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -37,-18,-34,-15,-18,-22,-11,-30,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -23, -1, -4,-16, 11, 12,  3,-38,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -11,  7, 15, 15, 13, 19, 18,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -2,  6, 19, 29, 30, 22,  6, -1,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -7,  9, 19, 28, 23, 13,  5, -2,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -6,  9, 16, 20, 17, 18,  9, -4,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     -7,  6,  8, -1, 10,  5, 21,-11,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -30, -6,-19,-12,-14,-16,-16,-27,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
   },                                                                        /**/
   {    /* Rooks */                                                          /**/
-      0,  0,  0,  0,  0,  0,  0,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      5, 10, 10, 10, 10, 10, 10,  5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  0,  0,  0,  0,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  0,  0,  0,  0,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  0,  0,  0,  0,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  0,  0,  0,  0,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  0,  0,  0,  0,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      0,  0,  0,  5,  5,  0,  0,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     21, 18, 22, 27, 28, 13, 13, 12,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+     19, 23, 28, 29, 20, 22, 12, 14,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+      7, 14, 12, 16,  5,  5,  8, -1,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+      0, -1, 12,  9,  9, 10, -6, -3,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -11, -3,  1,  1, -5,-10, -8,-17,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -25,-10,-11,-11, -8,-14,-14,-31,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -32,-12,-12, -8,-11, -8,-18,-52,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -20, -8,  0,  4,  3, -4,-28,-35,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
   },                                                                        /**/
   {     /* Queens */                                                        /**/
-    -20,-10,-10, -5, -5,-10,-10,-20,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0,  0,  0,  0,  0,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0,  5,  5,  5,  5,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-     -5,  0,  5,  5,  5,  5,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-      0,  0,  5,  5,  5,  5,  0, -5,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  5,  5,  5,  5,  5,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -10,  0,  5,  0,  0,  0,  0,-10,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
-    -20,-10,-10, -5, -5,-10,-10,-20,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -33,  6, 13, 16, 37, 23, 17, 33,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -45,-36,  1, 19, 23, 40, 32, 38,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -32,-20, -4, 24, 41, 52, 40, 43,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -27,-21, -5,  3, 22, 27, 19,  8,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -17,-14, -4, -2, 10,  7, 15,  0,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -21, -6, -4, -3, -3,  6,  5,  1,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -38,-19,  5, -4,  3, -2,-31,-21,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
+    -15,-28,-19,  4,-17,-39,-41,-62,      0,  0,  0,  0,  0,  0,  0,  0,    /**/
   }                                                                         /**/
 };                                                                          /**/
 /******************************************************************************/
@@ -169,15 +184,20 @@ int search(int depth,int ply,                     /* Search all moves         */
 int quiesce(int ply, int alpha, int beta);        /* Search only captures     */
 int eval();                                       /* Evaluate position        */
 void pickMove(MList *mList, int mv1);             /* Sort next move in a list */
-void scoreMoves(MList *mList, int ply);           /* Score moves in order     */
+void scoreMoves(MList *mList, int ply,            /* Score moves in order     */
+                Move ttMove);                     /*                          */
 int reps();                                       /* Find move repetitions    */
 int inCheck(int color);                           /* Side to move under check */
 void setHash();                                   /* Encode board position    */
 void ttStore(int key, int depth, int score,       /* Store move to            */
-             int flag, int ply);                  /* transposition table      */
+             int flag, int ply, Move move);       /* transposition table      */
 int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
-            int beta, int *score, int ply);       /* transposition table      */
+            int beta, int *score, int ply,        /* transposition table      */
+            Move *move);                          /*                          */
 int getTimeMs();                                  /* Get time in ms           */
+int inputWaiting();
+int timeUp();
+int readInput(char *input, int size);
 void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
 char *gameStr();                                  /* Get game moves string    */
@@ -302,6 +322,7 @@ int attack(int sq, int color) {                   /* Square attacked by color */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
+  if (gamePly >= 1024) return 0;                  /* Game history is full     */
   game[gamePly].move = move;                      /* Save move into a game    */
   game[gamePly].side = side;                      /* Save side to move        */
   game[gamePly].ep = ep;                          /* Save en passant square   */
@@ -415,18 +436,18 @@ int bookMove() {                                  /* Make book move if any    */
             bookLine[i] != gameLine[i]) {         /* in the opening book      */
           match = 0; break;                       /* End of book or mismatch  */
         }                                         /*                          */
-      } if (match) {                              /* Game matches book line   */
+      } if (match && bookMoves.count < 256) {     /* Game matches book line   */
         char *next = &bookLine[strlen(gameLine)]; /* Extract next book move   */
         Move move = parseMove(next);              /* Parse book move          */
         bookMoves.moves[bookMoves.count] = move;  /* Add book move to list    */
-        bookMoves.count++;                        /* Increment move counter   */
+        if (move.pce) bookMoves.count++;          /* Count only legal moves   */
       }                                           /*                          */
     }                                             /*                          */
   } if (bookMoves.count == 0) return 0;           /* No book move found       */
   srand(time(NULL));                              /* Set random seed          */
   int rIndex = rand() % bookMoves.count;          /* Pick random move index   */
   Move bestMove = bookMoves.moves[rIndex];        /* Pick random book move    */
-  make(bestMove);                                 /* Play book move on board  */
+  setHash(); make(bestMove);                      /* Play book move on board  */
   if (cli) printf("Book ");                       /* Print "Book" in CLI mode */
   printf("move %s", moveStr(bestMove));           /* CECP move output         */
   printf("\n");                                   /* Print best move          */
@@ -445,20 +466,20 @@ void closeBook() {                                /* Close book file          */
 /*                                                                            */
 /******************************************************************************/
 void think() {                                    /* Engine move              */
-  if (bookMove()) return;                         /* Make book move if any    */
   tick = getTimeMs();                             /* Start timer              */
+  if (!analyze && bookMove()) return;             /* Make book move if any    */
   stop = 0;                                       /* Reset stop flag          */
   nodes = 0;                                      /* Reset position count     */
   memset(pvTable,0,sizeof(pvTable));              /* Reset PV table           */
   memset(pvLength,0,sizeof(pvLength));            /* Reset PV length table    */
   memset(killMoves,0,sizeof(killMoves));          /* Reset killers table      */
   memset(histScores,0,sizeof(histScores));        /* Reset history table      */
-  Move bestMove = { 0 };                          /* Init PV move holder      */
+  bestMove = (Move){ 0 };                         /* Init PV move holder      */
   for (int d = 1; d <= sd; d++) {                 /* Iterative deepening      */
     int s = search(d, 0, -50000, 50000, 1);       /* Search best move         */
     if (stop) break;                              /* Time is up or game over  */
     bestMove = pvTable[0][0];                     /* Record last best move    */
-    if (post) { printf("%d %d %d %d ",            /* Engine search output     */
+    if (post) { printf("%d %d %d %lld ",          /* Engine search output     */
       d, s, (getTimeMs()-tick)/10, nodes);        /* depth/score/time/nodes   */
     for (int i = 0; i < pvLength[0]; i++) {       /* Loop over PV line        */
       Move move = pvTable[0][i];                  /* Get PV move              */
@@ -468,6 +489,7 @@ void think() {                                    /* Engine move              */
     } printf("\n");                               /* Print new line           */
     } if (abs(s) > 48000) break;                  /* Stop if found mate       */
   } if (bestMove.pce == 0) return;                /* No legal move to play    */
+  if (analyze) return;
   make(bestMove); printf("move ");                /* Make best last PV move   */
   printf("%s", moveStr(bestMove)); printf("\n");  /* Print best move          */
   if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
@@ -480,11 +502,12 @@ int search(int depth, int ply,                    /* Negamax search           */
   int oldAlpha = alpha;                           /* Previous best score      */
   int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
+  Move ttMove = { 0 }, best = { 0 };              /* TT move & best move      */
   if (depth == 0)                                 /* Main search is done      */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
-  if ((nodes & 1023) == 0)                        /* Check time control       */
-    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
+  if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
+    if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
@@ -492,18 +515,23 @@ int search(int depth, int ply,                    /* Negamax search           */
   int key  = hash ^ (side == 8 ?                  /* Get position key         */
              0xAAAAAAAAu : 0x55555555u);          /* relative to side to move */                                
   int ttHit = ttProbe(key, depth, alpha, beta,    /* Read TT entry            */
-                                 &score, ply);    /*                          */
+                      &score, ply, &ttMove);      /*                          */
   if (ply && ttHit && pvNode == 0) return score;  /* Return TT score          */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
+  if (pvNode == 0 && check == 0 && ply &&         /* Reverse futility pruning */
+      depth <= 3 && abs(beta) < 48000) {          /* at shallow non-PV nodes  */
+    if (eval() - 120 * depth >= beta)             /* Static score far above   */
+      return beta;                                /* beta, prune the node     */
+  }                                               /*                          */
   if (check == 0 && ply && null) {                /* Null move pruning        */
     int matScore = 0;                             /* Material score           */
     for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
       if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
       int pce = board[sq], pceType = pce & 7;     /* Get piece. extract type  */
-      if (pce && pceType != 1 && (pce & side)) {  /* Pieces of side to move   */
+      if (pce && pceType > 2 && (pce & side)) {   /* Pieces of side to move   */
         matScore += material[pceType];            /* Count all but pawns      */
       }                                           /*                          */
     } int rDepth = (matScore > 1500) ? 2 : 1;     /* Calculat reduce depth    */
@@ -521,7 +549,7 @@ int search(int depth, int ply,                    /* Negamax search           */
       if (score >= beta) return beta;             /* Beta cutoff              */
     }                                             /*                          */
   } MList mList; genMoves(&mList, 0);             /* Generate moves           */
-  scoreMoves(&mList, ply);                        /* Score moves              */
+  scoreMoves(&mList, ply, ttMove);                /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -530,8 +558,15 @@ int search(int depth, int ply,                    /* Negamax search           */
       score = -search(depth-1, ply+1,             /* Full window search       */
                       -beta, -alpha, 1);          /*                          */
     else {                                        /* Other moves              */
-        score = -search(depth-1, ply+1,           /* PVS null window search   */
+        int r = depth >= 3 && legalMoves >= 3 &&  /* Reduce late quiet moves  */
+                check == 0 && move.prom == 0 &&   /* when not in check, not   */
+                move.score < 800000000 &&         /* TT/PV, capture, killer,  */
+                inCheck(side) == 0;               /* or a checking move       */
+        score = -search(depth-1-r, ply+1,         /* PVS null window search   */
                         -alpha-1, -alpha, 1);     /*                          */
+        if (r && score > alpha)                   /* Reduced move fails high  */
+            score = -search(depth-1, ply+1,       /* Re-search at full depth  */
+                            -alpha-1, -alpha, 1); /*                          */
         if (score > alpha && score < beta)        /* Found a better move      */
             score = -search(depth-1, ply+1,       /* Full window re-search    */
                             -beta, -alpha, 1);    /*                          */
@@ -539,6 +574,7 @@ int search(int depth, int ply,                    /* Negamax search           */
     legalMoves++;                                 /* Count legal moves        */
     if (stop) return 0;                           /* Time is up, return       */
     if (score > alpha) {                          /* Found a better move      */
+      best = move;                                /* Remember best move       */
       if (move.capPce == 0)                       /* Quiet move               */
         histScores[board[move.src] & 15]          /* Update history scores    */
           [move.dst] += depth;                    /* By depth count           */
@@ -546,7 +582,7 @@ int search(int depth, int ply,                    /* Negamax search           */
         if (move.capPce == 0) {                   /* Quiet move               */
           killMoves[1][ply] = killMoves[0][ply];  /* Update 2nd killer move   */
           killMoves[0][ply] = move;               /* Update 1st killer move   */
-        } return beta;                            /* Beta cutoff              */
+        } alpha = beta; break;                    /* Beta cutoff              */
       } alpha = score;                            /* Update alpha score       */
       pvTable[ply][ply] = move;                   /* Record PV table entry    */
       for (int n = ply + 1;                       /* Copy remaining PV moves  */
@@ -561,15 +597,15 @@ int search(int depth, int ply,                    /* Negamax search           */
   int flag = 0;                                   /* Hash exact score flag    */
   if (alpha <= oldAlpha) flag = 1;                /* Hash alpha score flag    */
   else if (alpha >= beta) flag = 2;               /* Hash beta score flag     */
-  ttStore(key, depth, alpha, flag, ply);          /* Write TT entry           */
+  ttStore(key, depth, alpha, flag, ply, best);    /* Write TT entry           */
   return alpha;                                   /* Return best score        */
 }                                                 /*                          */
 /******************************************************************************/
 int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (stop) return 0;                             /* Time is up, return       */
   nodes++;                                        /* Count searched positions */
-  if ((nodes & 1023) == 0)                        /* Check time control       */
-    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
+  if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
+    if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
@@ -577,10 +613,13 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (score >= beta) return beta;                 /* Beta cutoff              */
   if (score > alpha) alpha = score;               /* Update alpha score       */
   MList mList; genMoves(&mList, 1);               /* Generate moves           */
-  scoreMoves(&mList, ply);                        /* Score moves              */
+  scoreMoves(&mList, ply, (Move){ 0 });           /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
+    if (score + material[move.capPce & 7] +       /* Delta pruning, capture   */
+        200 <= alpha && move.prom == 0)           /* can not raise alpha      */
+      continue;                                   /* Skip hopeless capture    */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     int score = -quiesce(ply + 1, -beta, -alpha); /* Quiescence search        */
     undo();                                       /* Take move back           */
@@ -612,34 +651,37 @@ int eval() {                                      /* Static evaluation        */
         int rank = sq >> 4;                       /* Pawn rank                */
         int isolated = 1;                         /* Isolated pawn flag       */
         int passed = 1;                           /* Passed pawn flag         */
-        if (board[sq + dir] == pce) {             /* On doubled pawns         */
-            if (pce == 10) score -= 20;           /* Give penalty to white    */
-            else score += 20;                     /* Give penalty to black    */
-        } for (int r = 0; r < 8; r++) {           /* Loop over adjacent file  */
+        int doubled = 0;                          /* Doubled pawn flag        */
+        for (int r = 0; r < 8; r++) {             /* Loop over adjacent file  */
             if (file > 0 &&                       /* Not A-file               */
-              board[r * 16 + file - 1] == pce)    /* No friendly pawn left    */
-              isolated = 0;                       /* Pawn is isolated         */
+              board[r * 16 + file - 1] == pce)    /* Friendly pawn on left    */
+              isolated = 0;                       /* Pawn is not isolated     */
             if (file < 7 &&                       /* Not H-file               */
-              board[r * 16 + file + 1] == pce)    /* No friendly pawn right   */
-              isolated = 0;                       /* Pawn is isolated         */
-        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check enemy pawns ahead  */
+              board[r * 16 + file + 1] == pce)    /* Friendly pawn on right   */
+              isolated = 0;                       /* Pawn is not isolated     */
+        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check pawns ahead        */
              r >= 0 && r < 8;                     /* on same and              */
              r += (dir < 0 ? -1 : 1)) {           /* adjacent files           */
             if (board[r * 16 + file] == oPawn)    /* Enemy pawn on same file  */
               passed = 0;                         /* Pawn is not passed       */
+            if (board[r * 16 + file] == pce)      /* Own pawn on same file    */
+              doubled = 1;                        /* Pawn is doubled          */
             if (file > 0 &&                       /* Not A-file               */
               board[r * 16 + file - 1] == oPawn)  /* Enemy pawn left          */
               passed = 0;                         /* Pawn is not passed       */
             if (file < 7 &&                       /* Not H-file               */
               board[r * 16 + file + 1] == oPawn)  /* Enemy pawn right         */
-              passed = 0;                         /* Pawn is not passing      */
+              passed = 0;                         /* Pawn is not passed       */
+        } if (doubled) {                          /* Pawn is doubled          */
+            if (pce == 10) score -= 9;            /* Give penalty to white    */
+            else score += 9;                      /* Give penalty to black    */
         } if (isolated) {                         /* Pawn is isolated         */
-            if (pce == 10) score -= 20;           /* Give penalty to white    */
-            else score += 20;                     /* Give penalty to black    */
+            if (pce == 10) score -= 14;           /* Give penalty to white    */
+            else score += 14;                     /* Give penalty to black    */
         } if (passed) {                           /* Pawn is passed           */
             int adv = (pce == 10) ?               /* For both colors          */
                 6 - rank : rank - 1;              /* Calculate pawn rank      */
-            int bonus = 30 + adv * adv * 5;       /* Passed pawn bonus        */
+            int bonus = 1 + adv * adv * 6;        /* Passed pawn bonus        */
             if (pce == 10) score += bonus;        /* Give bonus to white      */
             else score -= bonus;                  /* Give bonus to black      */
         }                                         /*                          */
@@ -647,9 +689,9 @@ int eval() {                                      /* Static evaluation        */
     if (pce == 17) kingBlack = sq;                /* Remember black king      */
     if (pce & 8) matWhite += material[pceType];   /* Count white material     */
     if (pce & 16) matBlack += material[pceType];  /* Count black material     */
-    if (pce & 8)                                  /* White piece              */
+    if ((pce & 8) && pceType != 1)                /* White piece but king     */
       score += pst[pceType][sq];                  /* White positional score   */
-    if (pce & 16)                                 /* Black piece              */
+    if ((pce & 16) && pceType != 1)               /* Black piece but king     */
       score -= pst[pceType][sq ^ 112];            /* Black positional score   */
   } if (matWhite < 1350) kingWhite += 8;          /* White king in an endgame */
   if (matBlack < 1350) kingBlack += 8;            /* Black king in an endgame */
@@ -670,7 +712,8 @@ void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
-void scoreMoves(MList *mList, int ply) {          /* Move scoring             */
+void scoreMoves(MList *mList, int ply,            /* Move scoring             */
+                Move ttMove) {                    /*                          */
   for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
     Move *move = &mList->moves[mv];               /* Get current move         */
     int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
@@ -691,6 +734,10 @@ void scoreMoves(MList *mList, int ply) {          /* Move scoring             */
       else move->score = histScores[              /* Other quiet moves        */
         board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
     }                                             /*                          */
+    if (move->src == ttMove.src &&                /* Move is a TT move        */
+        move->dst == ttMove.dst &&                /*                          */
+        move->prom == ttMove.prom)                /*                          */
+      move->score = 2100000000;                   /* Search it first          */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
@@ -707,7 +754,7 @@ int inCheck(int color) {                          /* Is king in check ?       */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Encode board position    */
-  hash = 0;                                       /* Reset position hash key  */
+  hash = hashPiece[side >> 4][0][0];              /* Side to move hash key    */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     int pce = board[sq];                          /* Get square contents      */
@@ -720,9 +767,11 @@ void setHash() {                                  /* Encode board position    */
 }                                                 /*                          */
 /******************************************************************************/
 void ttStore(int key, int depth, int score,       /* Write entry to TT        */
-                      int flag, int ply) {        /*                          */
+             int flag, int ply, Move move) {      /*                          */
     TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
     if (depth >= e->depth || e->key != key) {     /* Replace old entry        */
+        if (move.pce || e->key != key)            /* Keep old move if no best */
+            e->move = move;                       /* Write best move          */
         e->key = key;                             /* Write position key       */
         if (score > 48000) score += ply;          /* Normalize winning score  */
         else if (score < -48000) score -= ply;    /* Normalize loosing score  */
@@ -733,9 +782,11 @@ void ttStore(int key, int depth, int score,       /* Write entry to TT        */
 }                                                 /*                          */
 /******************************************************************************/
 int ttProbe(int key, int depth, int alpha,        /* Read entry from TT       */
-            int beta, int *score, int ply) {      /*                          */
+            int beta, int *score, int ply,        /*                          */
+            Move *move) {                         /*                          */
     TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
     if (e->key != key) return 0;                  /* Skip on key mismatch     */
+    *move = e->move;                              /* Read TT move for sorting */
     if (e->depth < depth) return 0;               /* Skip on depth mismatch   */
     int ttScore = e->score;                       /* Init TT score            */
     if (ttScore > 48000) ttScore -= ply;          /* Normalize winning score  */
@@ -757,6 +808,29 @@ int getTimeMs() {                                 /* Count time spent         */
     return t.tv_sec*1000 + t.tv_usec/1000;        /* return time in ms        */
   #endif	                                      /*                          */
 }                                                 /*                          */
+/******************************************************************************/
+int inputWaiting() {
+  #ifdef WIN64
+    DWORD bytes;
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    if (PeekNamedPipe(in, NULL, 0, NULL, &bytes, NULL)) return bytes > 0;
+    return _kbhit();
+  #else
+    fd_set fds;
+    struct timeval t = { 0, 0 };
+    FD_ZERO(&fds); FD_SET(0, &fds);
+    return select(1, &fds, NULL, NULL, &t) > 0;
+  #endif
+}
+/******************************************************************************/
+int timeUp() {
+  if (!analyze) return getTimeMs() - tick >= st;
+  if (!inputWaiting()) return 0;
+  int c = getc(stdin);
+  if (c != '.') { ungetc(c, stdin); return 1; }
+  while (c != '\n' && c != EOF) c = getc(stdin);
+  return 0;
+}
 /******************************************************************************/
 /*                                   Output                                   */
 /*                                                                            */
@@ -828,7 +902,7 @@ void printBoard() {                               /* Print board to console   */
 }                                                 /* End printBoard function  */
 /******************************************************************************/
 char *moveStr(Move move) {                        /* Convert move to string   */
-  static char mStr[5];                            /* Move string              */
+  static char mStr[6];                            /* Move string              */
   mStr[0] = (move.src & 7) + 'a',                 /* Source file              */
   mStr[1] = 8 - ((move.src >> 4) & 7) + '0',      /* Source rank              */
   mStr[2] = (move.dst & 7) + 'a',                 /* Target file              */
@@ -838,7 +912,7 @@ char *moveStr(Move move) {                        /* Convert move to string   */
 }                                                 /*                          */
 /******************************************************************************/
 char *gameStr() {                                 /* Game moves sequence      */
-  static char gStr[2048];                         /* Game moves string        */
+  static char gStr[6145];                         /* Game moves string        */
   int len = 0;                                    /* Offset length            */
   gStr[0] = '\0';                                 /* Reset moves string       */
   for (int i = 0; i < gamePly; i++) {             /* Loop over game moves     */
@@ -849,7 +923,7 @@ char *gameStr() {                                 /* Game moves sequence      */
 /******************************************************************************/
 void printResult() {                              /* Game result              */
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
-  int legalMoves = 0;                             /* Legal moves counter      */
+  int legalMoves = 0; setHash();                  /* Legal moves counter      */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */
     if (make(mList.moves[i]) == 0) continue;      /* Make only legal moves    */
     legalMoves++; undo();                         /* Count moves, take back   */
@@ -867,6 +941,7 @@ void printResult() {                              /* Game result              */
 /******************************************************************************/
 Move parseMove(char *moveStr) {                   /* Parse move string        */
   Move illegal = { 0 };                           /* No move                  */
+  if (strlen(moveStr) < 4) return illegal;        /* Move string too short    */
   int srcFile = moveStr[0] - 'a';                 /* Extract source file      */
   int srcRank = 8 - (moveStr[1] - '0');           /* Extract source rank      */
   int dstFile = moveStr[2] - 'a';                 /* Extract target file      */
@@ -903,7 +978,7 @@ void loadGame(char *moves) {                      /* Load user game           */
     if (move.pce == 0) {                          /* Illegal move             */
       printf("Illegal move: %s\n", mStr);         /* Inform user              */
       break;                                      /* Load no more moves       */
-    } make(move);                                 /* Load game move           */
+    } setHash(); make(move);                      /* Load game move           */
     mStr = strtok(NULL, " ");                     /* Extract next move        */
   } printBoard();                                 /* Print board to console   */
   printf("Game has been loaded\n");               /* Inform user game loaded  */
@@ -912,13 +987,19 @@ void loadGame(char *moves) {                      /* Load user game           */
 /*                               CECP Protocol                                */
 /*                                                                            */
 /******************************************************************************/
+int readInput(char *input, int size) {
+  if (analyze) think();
+  return fgets(input, size, stdin) != NULL;
+}
+/******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("MacroMix, v1.4 by CMK\n");              /* Engine info for GUI      */
+  printf("%s by %s\n", ENGINE, ENGINE_AUTHOR);    /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
-  char input[80] = "new";                         /* Run "new" to init engine */
+  char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
+  setbuf(stdin, NULL);
   do {                                            /* User command loop        */
     char command[2048] = { 0 };                   /* User command storage     */                 
     sscanf(input, "%2047[^\n]", command);         /* Read user command        */
@@ -932,7 +1013,10 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
       continue;                                   /* Process next command     */
     } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
+      printf("feature ping=1 setboard=1\n");
       printf("feature done=1\n");                 /* Prevent GUI delay        */
+    } if (!strncmp(command, "ping", 4)) {
+      printf("pong %s\n", command + 5); continue;
     } if (!strcmp(command, "new")) {              /* CECP command "new"       */
       srand(0);                                   /* Set random seed          */
       for (int col = 0; col < 2; col++)           /* Loop over color types    */
@@ -963,13 +1047,43 @@ int main() {                                      /* Xboard / Winboard driver */
         setHash();                                /* Hash position            */
         if (cli) printBoard();                    /* Print board to console   */
         continue;                                 /* Process next command     */
+    } if (!strncmp(command, "setboard", 8)) {
+      char pos[128] = "", stm = 'w', cas[5] = "", eps[3] = "";
+      char *pieces = "kpnbrqKPNBRQ";
+      fifty = 0;
+      sscanf(command + 8, "%127s %c %4s %2s %d", pos, &stm, cas, eps, &fifty);
+      for (int sq = 0; sq < 128; sq++)
+        if (!(sq & 0x88)) board[sq] = 0;
+      int sq = 0;
+      for (char *c = pos; *c && sq < 128; c++) {
+        char *p = strchr(pieces, *c);
+        if (*c == '/') sq = (sq + 15) & ~15;
+        else if (*c >= '1' && *c <= '8') sq += *c - '0';
+        else if (p && !(sq & 0x88)) {
+          int color = p - pieces < 6 ? 16 : 8;
+          int type = (p - pieces) % 6 + 1;
+          board[sq] = color | type;
+          if (type == 1) kingSq[color >> 4] = sq;
+          sq++;
+        }
+      }
+      side = stm == 'b' ? 16 : 8;
+      castle = (strchr(cas, 'K') ? 1 : 0) | (strchr(cas, 'Q') ? 2 : 0) |
+               (strchr(cas, 'k') ? 4 : 0) | (strchr(cas, 'q') ? 8 : 0);
+      ep = -1;
+      if (eps[0] >= 'a' && eps[0] <= 'h' && eps[1] >= '1' && eps[1] <= '8')
+        ep = (eps[0] - 'a') + (8 - (eps[1] - '0')) * 16;
+      gamePly = 0;
+      setHash();
+      if (cli) printBoard();
+      continue;
     } if (!strncmp(command, "level", 5)) {        /* CECP command "level"     */
-      float sec = 0; mps = 0;                     /* Reset level parameters   */
+      float sec = 0; mps = 0; fixed = 0;          /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
              &mps, &sec);                         /* and time increment       */
       inc = sec * 1000; continue;                 /* Increment in ms          */
-    } if (!strncmp(command, "time", 4)) {         /* CECP command "time"      */
-      int ms = atoi(command + 5) * 10;            /* Remaining time in ms     */
+    } if (!strncmp(command,"time",4) && !fixed) { /* CECP command "time"      */
+      int ms = atoi(command + 5) * 10 - lag;      /* Remaining time in ms     */
       int mtg = 30;                               /* Default moves to go      */
       if (mps)                                    /* Moves per session given  */
         mtg = mps - (gamePly + 1) / 2 % mps;      /* Moves to time control    */
@@ -984,8 +1098,8 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "force")) {            /* CECP command "force"     */
       force = 1; continue;                        /* Computer plays neither   */
     } if (!strncmp(command, "st", 2)) {           /* CECP command "st"        */
-      st = atoi(command + 3) * 1000;              /* Fixed time search mode   */
-      sd = 63; continue;                          /* "Infinite" search depth  */
+      st = atoi(command + 3) * 1000 - lag;        /* Fixed time search mode   */
+      sd = 63; fixed = 1; continue;               /* "Infinite" search depth  */
     } if (!strncmp(command, "sd", 2)) {           /* CECP command "sd"        */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
       st = 1e6; continue;                         /* "Infinite" search time   */
@@ -995,7 +1109,12 @@ int main() {                                      /* Xboard / Winboard driver */
       post = 0; continue;                         /* Unset print PV flag      */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
-      think(); continue;                          /* Make engine move         */             
+      if (!analyze) think();                      /* Make engine move         */             
+      continue;
+    } if (!strcmp(command, "analyze")) {
+      analyze = 1; post = 1; continue;
+    } if (!strcmp(command, "exit")) {
+      analyze = 0; continue;
     } if (command[0] >= 'a' &&                    /*                          */
           command[0] <= 'z' &&                    /* If command is a move     */
           command[1] >= '0' &&                    /* in format "e2e4"         */
@@ -1006,7 +1125,7 @@ int main() {                                      /* Xboard / Winboard driver */
         continue;                                 /* Do not search            */
       } else { setHash(); make(move); }           /* Make user move           */
       if (cli) { printResult(); printBoard(); }   /* Print board in CLI mode  */
-      if (force == 0) {                           /* Search best move         */
+      if (force == 0 && !analyze) {               /* Search best move         */
         think();                                  /* No legal move to play    */
       } continue;                                 /* Read next command        */
     } if (!strcmp(command, "undo")) {             /* CECP command "undo"      */
@@ -1019,7 +1138,7 @@ int main() {                                      /* Xboard / Winboard driver */
       int d = atoi(command + 6);                  /* Parse perft depth        */
       printf("Perft depth %d ", d); perft(d);     /* Run test                 */
       int time = getTimeMs() - tick;              /* Stop timer               */
-      printf("nodes %d time %d\n", nodes, time);  /* Print result             */
+      printf("nodes %lld time %d\n",nodes,time);  /* Print result             */
       continue;                                   /* Read next command        */
     } if (!strcmp(command, "board")) {            /* CLI command "board"      */
       printBoard(); continue;                     /* Print board to console   */
@@ -1042,6 +1161,8 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("post\tprint PV lines\n");           /* Command reference list   */
       printf("nopost\tthink quietly\n");          /*                          */
       printf("go\tengine move\n");                /*                          */
+      printf("analyze\tinfinite analysis\n");
+      printf("exit\tleave analysis\n");
       printf("e2e4\tuser move\n");                /*                          */
       printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
@@ -1053,7 +1174,7 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("quit\texit program\n\n");           /*                          */
       continue;                                   /* Process next command     */
     } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
-  } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
+  } while (readInput(input, sizeof(input)));      /* Read user input          */
   closeBook(); return 0;                          /* Close opening book, exit */
 }                                                 /*                          */
 /******************************************************************************/
