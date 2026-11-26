@@ -1128,6 +1128,8 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("post\tprint PV lines\n");           /* Command reference list   */
       printf("nopost\tthink quietly\n");          /*                          */
       printf("go\tengine move\n");                /*                          */
+      printf("analyze\tinfinite analysis\n");
+      printf("exit\tleave analysis\n");
       printf("e2e4\tuser move\n");                /*                          */
       printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
