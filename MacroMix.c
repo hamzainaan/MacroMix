@@ -546,7 +546,7 @@ int search(int depth, int ply,                    /* Negamax search           */
         if (move.capPce == 0) {                   /* Quiet move               */
           killMoves[1][ply] = killMoves[0][ply];  /* Update 2nd killer move   */
           killMoves[0][ply] = move;               /* Update 1st killer move   */
-        } return beta;                            /* Beta cutoff              */
+        } alpha = beta; break;                    /* Beta cutoff              */
       } alpha = score;                            /* Update alpha score       */
       pvTable[ply][ply] = move;                   /* Record PV table entry    */
       for (int n = ply + 1;                       /* Copy remaining PV moves  */
