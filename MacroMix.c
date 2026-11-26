@@ -27,8 +27,10 @@
 #include <time.h>                                 /* Random book moves seed   */
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
+  #include "conio.h"
 #else                                             /*                          */
   #include "sys/time.h"                           /* UNIX-like gettimeofday() */
+  #include "sys/select.h"
 #endif                                            /*                          */
 #ifndef ENGINE_NAME                               /*                          */
   #define ENGINE_NAME "MacroMix"                  /*                          */
@@ -99,6 +101,7 @@ TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
 int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
+int analyze;
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 0, 100, 358, 397, 631, 1217 };    /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -192,6 +195,9 @@ int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
             int beta, int *score, int ply,        /* transposition table      */
             Move *move);                          /*                          */
 int getTimeMs();                                  /* Get time in ms           */
+int inputWaiting();
+int timeUp();
+int readInput(char *input, int size);
 void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
 char *gameStr();                                  /* Get game moves string    */
@@ -461,7 +467,7 @@ void closeBook() {                                /* Close book file          */
 /******************************************************************************/
 void think() {                                    /* Engine move              */
   tick = getTimeMs();                             /* Start timer              */
-  if (bookMove()) return;                         /* Make book move if any    */
+  if (!analyze && bookMove()) return;             /* Make book move if any    */
   stop = 0;                                       /* Reset stop flag          */
   nodes = 0;                                      /* Reset position count     */
   memset(pvTable,0,sizeof(pvTable));              /* Reset PV table           */
@@ -483,6 +489,7 @@ void think() {                                    /* Engine move              */
     } printf("\n");                               /* Print new line           */
     } if (abs(s) > 48000) break;                  /* Stop if found mate       */
   } if (bestMove.pce == 0) return;                /* No legal move to play    */
+  if (analyze) return;
   make(bestMove); printf("move ");                /* Make best last PV move   */
   printf("%s", moveStr(bestMove)); printf("\n");  /* Print best move          */
   if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
@@ -500,7 +507,7 @@ int search(int depth, int ply,                    /* Negamax search           */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
   if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
-    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
+    if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
@@ -598,7 +605,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (stop) return 0;                             /* Time is up, return       */
   nodes++;                                        /* Count searched positions */
   if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
-    if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
+    if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
@@ -802,6 +809,29 @@ int getTimeMs() {                                 /* Count time spent         */
   #endif	                                      /*                          */
 }                                                 /*                          */
 /******************************************************************************/
+int inputWaiting() {
+  #ifdef WIN64
+    DWORD bytes;
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    if (PeekNamedPipe(in, NULL, 0, NULL, &bytes, NULL)) return bytes > 0;
+    return _kbhit();
+  #else
+    fd_set fds;
+    struct timeval t = { 0, 0 };
+    FD_ZERO(&fds); FD_SET(0, &fds);
+    return select(1, &fds, NULL, NULL, &t) > 0;
+  #endif
+}
+/******************************************************************************/
+int timeUp() {
+  if (!analyze) return getTimeMs() - tick >= st;
+  if (!inputWaiting()) return 0;
+  int c = getc(stdin);
+  if (c != '.') { ungetc(c, stdin); return 1; }
+  while (c != '\n' && c != EOF) c = getc(stdin);
+  return 0;
+}
+/******************************************************************************/
 /*                                   Output                                   */
 /*                                                                            */
 /******************************************************************************/
@@ -957,6 +987,11 @@ void loadGame(char *moves) {                      /* Load user game           */
 /*                               CECP Protocol                                */
 /*                                                                            */
 /******************************************************************************/
+int readInput(char *input, int size) {
+  if (analyze) think();
+  return fgets(input, size, stdin) != NULL;
+}
+/******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
@@ -964,6 +999,7 @@ int main() {                                      /* Xboard / Winboard driver */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
+  setbuf(stdin, NULL);
   do {                                            /* User command loop        */
     char command[2048] = { 0 };                   /* User command storage     */                 
     sscanf(input, "%2047[^\n]", command);         /* Read user command        */
@@ -1040,7 +1076,12 @@ int main() {                                      /* Xboard / Winboard driver */
       post = 0; continue;                         /* Unset print PV flag      */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
-      think(); continue;                          /* Make engine move         */             
+      if (!analyze) think();                      /* Make engine move         */             
+      continue;
+    } if (!strcmp(command, "analyze")) {
+      analyze = 1; post = 1; continue;
+    } if (!strcmp(command, "exit")) {
+      analyze = 0; continue;
     } if (command[0] >= 'a' &&                    /*                          */
           command[0] <= 'z' &&                    /* If command is a move     */
           command[1] >= '0' &&                    /* in format "e2e4"         */
@@ -1051,7 +1092,7 @@ int main() {                                      /* Xboard / Winboard driver */
         continue;                                 /* Do not search            */
       } else { setHash(); make(move); }           /* Make user move           */
       if (cli) { printResult(); printBoard(); }   /* Print board in CLI mode  */
-      if (force == 0) {                           /* Search best move         */
+      if (force == 0 && !analyze) {               /* Search best move         */
         think();                                  /* No legal move to play    */
       } continue;                                 /* Read next command        */
     } if (!strcmp(command, "undo")) {             /* CECP command "undo"      */
@@ -1098,7 +1139,7 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("quit\texit program\n\n");           /*                          */
       continue;                                   /* Process next command     */
     } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
-  } while (fgets(input, sizeof(input), stdin));   /* Read user input          */
+  } while (readInput(input, sizeof(input)));      /* Read user input          */
   closeBook(); return 0;                          /* Close opening book, exit */
 }                                                 /*                          */
 /******************************************************************************/
