@@ -3,6 +3,11 @@ Xboard/Winboard Chess Engine by CMK
 
 [![Play on Lichess](https://img.shields.io/badge/Play%20on-Lichess-white?style=for-the-badge&logo=lichess&logoColor=white)](https://lichess.org/?user=MacroMix#friend)
 
+[![Bullet rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.bullet.rating&label=Bullet&logo=lichess&logoColor=white&color=white)](https://lichess.org/@/MacroMix/perf/bullet)
+[![Blitz rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.blitz.rating&label=Blitz&logo=lichess&logoColor=white&color=white)](https://lichess.org/@/MacroMix/perf/blitz)
+[![Rapid rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.rapid.rating&label=Rapid&logo=lichess&logoColor=white&color=white)](https://lichess.org/@/MacroMix/perf/rapid)
+[![Classical rating](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Flichess.org%2Fapi%2Fuser%2FMacroMix&query=%24.perfs.classical.rating&label=Classical&logo=lichess&logoColor=white&color=white)](https://lichess.org/@/MacroMix/perf/classical)
+
 # Description
 MacroMix is a compact, didactic chess engine combining the most
 essential techniques of classical chess programming into a single
