@@ -1,5 +1,5 @@
 # MacroMix
-Xboard/Winboard Chess Engine by CMK, Hamza Inaan
+Xboard/Winboard Chess Engine by CMK
 
 # Description
 MacroMix is a compact, didactic chess engine combining the most
@@ -22,7 +22,3 @@ Version 1.4 beats TSCP 5.5-4.5
 # How to compile it?
 Simly run **make** or the explicit command:
     **gcc -O3 MacroMix.c -o MacroMix**
-
-# Credits
- - Many thanks to Hamza Inaan for numerous bug fixes and
-   making search about 2x faster.
