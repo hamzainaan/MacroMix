@@ -415,7 +415,7 @@ int bookMove() {                                  /* Make book move if any    */
             bookLine[i] != gameLine[i]) {         /* in the opening book      */
           match = 0; break;                       /* End of book or mismatch  */
         }                                         /*                          */
-      } if (match) {                              /* Game matches book line   */
+      } if (match && bookMoves.count < 256) {     /* Game matches book line   */
         char *next = &bookLine[strlen(gameLine)]; /* Extract next book move   */
         Move move = parseMove(next);              /* Parse book move          */
         bookMoves.moves[bookMoves.count] = move;  /* Add book move to list    */
