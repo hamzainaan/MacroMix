@@ -8,15 +8,17 @@ CECP-compatible engine.
 
 # Features
  - Compact move generator
- - PV, MVV/LVA, killer & history move ordering
+ - TT, PV, MVV/LVA, killer & history move ordering
  - Iterative deepening
  - Negamax with alpha-beta pruning
  - Principal variation search
  - Null move pruning
+ - Late move reductions
+ - Reverse futility pruning
  - Check extension
  - Transposition table (~1MB) with Zobrist hashing
  - Repetition & fifty move rule detection
- - Quiescence search
+ - Quiescence search with delta pruning
  - Simplified evaluation function
  - Pawn structure: doubled, isolated & passed pawns
  - Texel tuned material, piece-square tables & pawn structure
