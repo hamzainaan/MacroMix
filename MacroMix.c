@@ -181,14 +181,16 @@ int search(int depth,int ply,                     /* Search all moves         */
 int quiesce(int ply, int alpha, int beta);        /* Search only captures     */
 int eval();                                       /* Evaluate position        */
 void pickMove(MList *mList, int mv1);             /* Sort next move in a list */
-void scoreMoves(MList *mList, int ply);           /* Score moves in order     */
+void scoreMoves(MList *mList, int ply,            /* Score moves in order     */
+                Move ttMove);                     /*                          */
 int reps();                                       /* Find move repetitions    */
 int inCheck(int color);                           /* Side to move under check */
 void setHash();                                   /* Encode board position    */
 void ttStore(int key, int depth, int score,       /* Store move to            */
-             int flag, int ply);                  /* transposition table      */
+             int flag, int ply, Move move);       /* transposition table      */
 int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
-            int beta, int *score, int ply);       /* transposition table      */
+            int beta, int *score, int ply,        /* transposition table      */
+            Move *move);                          /*                          */
 int getTimeMs();                                  /* Get time in ms           */
 void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
@@ -493,6 +495,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   int oldAlpha = alpha;                           /* Previous best score      */
   int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
+  Move ttMove = { 0 }, best = { 0 };              /* TT move & best move      */
   if (depth == 0)                                 /* Main search is done      */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
@@ -505,7 +508,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   int key  = hash ^ (side == 8 ?                  /* Get position key         */
              0xAAAAAAAAu : 0x55555555u);          /* relative to side to move */                                
   int ttHit = ttProbe(key, depth, alpha, beta,    /* Read TT entry            */
-                                 &score, ply);    /*                          */
+                      &score, ply, &ttMove);      /*                          */
   if (ply && ttHit && pvNode == 0) return score;  /* Return TT score          */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
@@ -534,7 +537,7 @@ int search(int depth, int ply,                    /* Negamax search           */
       if (score >= beta) return beta;             /* Beta cutoff              */
     }                                             /*                          */
   } MList mList; genMoves(&mList, 0);             /* Generate moves           */
-  scoreMoves(&mList, ply);                        /* Score moves              */
+  scoreMoves(&mList, ply, ttMove);                /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -552,6 +555,7 @@ int search(int depth, int ply,                    /* Negamax search           */
     legalMoves++;                                 /* Count legal moves        */
     if (stop) return 0;                           /* Time is up, return       */
     if (score > alpha) {                          /* Found a better move      */
+      best = move;                                /* Remember best move       */
       if (move.capPce == 0)                       /* Quiet move               */
         histScores[board[move.src] & 15]          /* Update history scores    */
           [move.dst] += depth;                    /* By depth count           */
@@ -574,7 +578,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   int flag = 0;                                   /* Hash exact score flag    */
   if (alpha <= oldAlpha) flag = 1;                /* Hash alpha score flag    */
   else if (alpha >= beta) flag = 2;               /* Hash beta score flag     */
-  ttStore(key, depth, alpha, flag, ply);          /* Write TT entry           */
+  ttStore(key, depth, alpha, flag, ply, best);    /* Write TT entry           */
   return alpha;                                   /* Return best score        */
 }                                                 /*                          */
 /******************************************************************************/
@@ -590,7 +594,7 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (score >= beta) return beta;                 /* Beta cutoff              */
   if (score > alpha) alpha = score;               /* Update alpha score       */
   MList mList; genMoves(&mList, 1);               /* Generate moves           */
-  scoreMoves(&mList, ply);                        /* Score moves              */
+  scoreMoves(&mList, ply, (Move){ 0 });           /* Score moves              */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
@@ -686,7 +690,8 @@ void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
-void scoreMoves(MList *mList, int ply) {          /* Move scoring             */
+void scoreMoves(MList *mList, int ply,            /* Move scoring             */
+                Move ttMove) {                    /*                          */
   for (int mv = 0; mv < mList->count; mv++) {     /* Loop over moves          */
     Move *move = &mList->moves[mv];               /* Get current move         */
     int pvSrc = pvTable[0][ply].src;              /* Get PV move source       */
@@ -707,6 +712,10 @@ void scoreMoves(MList *mList, int ply) {          /* Move scoring             */
       else move->score = histScores[              /* Other quiet moves        */
         board[move->src] & 15][move->dst] + 7000; /* Assign history score     */
     }                                             /*                          */
+    if (move->src == ttMove.src &&                /* Move is a TT move        */
+        move->dst == ttMove.dst &&                /*                          */
+        move->prom == ttMove.prom)                /*                          */
+      move->score = 2100000000;                   /* Search it first          */
   }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
@@ -736,9 +745,11 @@ void setHash() {                                  /* Encode board position    */
 }                                                 /*                          */
 /******************************************************************************/
 void ttStore(int key, int depth, int score,       /* Write entry to TT        */
-                      int flag, int ply) {        /*                          */
+             int flag, int ply, Move move) {      /*                          */
     TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
     if (depth >= e->depth || e->key != key) {     /* Replace old entry        */
+        if (move.pce || e->key != key)            /* Keep old move if no best */
+            e->move = move;                       /* Write best move          */
         e->key = key;                             /* Write position key       */
         if (score > 48000) score += ply;          /* Normalize winning score  */
         else if (score < -48000) score -= ply;    /* Normalize loosing score  */
@@ -749,9 +760,11 @@ void ttStore(int key, int depth, int score,       /* Write entry to TT        */
 }                                                 /*                          */
 /******************************************************************************/
 int ttProbe(int key, int depth, int alpha,        /* Read entry from TT       */
-            int beta, int *score, int ply) {      /*                          */
+            int beta, int *score, int ply,        /*                          */
+            Move *move) {                         /*                          */
     TTEntry *e = &tt[key & (TT_SIZE - 1)];        /* Create TT entry          */
     if (e->key != key) return 0;                  /* Skip on key mismatch     */
+    *move = e->move;                              /* Read TT move for sorting */
     if (e->depth < depth) return 0;               /* Skip on depth mismatch   */
     int ttScore = e->score;                       /* Init TT score            */
     if (ttScore > 48000) ttScore -= ply;          /* Normalize winning score  */
