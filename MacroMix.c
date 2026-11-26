@@ -841,7 +841,7 @@ char *moveStr(Move move) {                        /* Convert move to string   */
 }                                                 /*                          */
 /******************************************************************************/
 char *gameStr() {                                 /* Game moves sequence      */
-  static char gStr[2048];                         /* Game moves string        */
+  static char gStr[6145];                         /* Game moves string        */
   int len = 0;                                    /* Offset length            */
   gStr[0] = '\0';                                 /* Reset moves string       */
   for (int i = 0; i < gamePly; i++) {             /* Loop over game moves     */
