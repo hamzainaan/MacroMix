@@ -546,8 +546,15 @@ int search(int depth, int ply,                    /* Negamax search           */
       score = -search(depth-1, ply+1,             /* Full window search       */
                       -beta, -alpha, 1);          /*                          */
     else {                                        /* Other moves              */
-        score = -search(depth-1, ply+1,           /* PVS null window search   */
+        int r = depth >= 3 && legalMoves >= 3 &&  /* Reduce late quiet moves  */
+                check == 0 && move.prom == 0 &&   /* when not in check, not   */
+                move.score < 800000000 &&         /* TT/PV, capture, killer,  */
+                inCheck(side) == 0;               /* or a checking move       */
+        score = -search(depth-1-r, ply+1,         /* PVS null window search   */
                         -alpha-1, -alpha, 1);     /*                          */
+        if (r && score > alpha)                   /* Reduced move fails high  */
+            score = -search(depth-1, ply+1,       /* Re-search at full depth  */
+                            -alpha-1, -alpha, 1); /*                          */
         if (score > alpha && score < beta)        /* Found a better move      */
             score = -search(depth-1, ply+1,       /* Full window re-search    */
                             -beta, -alpha, 1);    /*                          */
