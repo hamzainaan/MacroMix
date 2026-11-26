@@ -647,9 +647,9 @@ int eval() {                                      /* Static evaluation        */
     if (pce == 17) kingBlack = sq;                /* Remember black king      */
     if (pce & 8) matWhite += material[pceType];   /* Count white material     */
     if (pce & 16) matBlack += material[pceType];  /* Count black material     */
-    if (pce & 8)                                  /* White piece              */
+    if ((pce & 8) && pceType != 1)                /* White piece but king     */
       score += pst[pceType][sq];                  /* White positional score   */
-    if (pce & 16)                                 /* Black piece              */
+    if ((pce & 16) && pceType != 1)               /* Black piece but king     */
       score -= pst[pceType][sq ^ 112];            /* Black positional score   */
   } if (matWhite < 1350) kingWhite += 8;          /* White king in an endgame */
   if (matBlack < 1350) kingBlack += 8;            /* Black king in an endgame */
