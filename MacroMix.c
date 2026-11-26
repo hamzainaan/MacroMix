@@ -612,27 +612,30 @@ int eval() {                                      /* Static evaluation        */
         int rank = sq >> 4;                       /* Pawn rank                */
         int isolated = 1;                         /* Isolated pawn flag       */
         int passed = 1;                           /* Passed pawn flag         */
-        if (board[sq + dir] == pce) {             /* On doubled pawns         */
-            if (pce == 10) score -= 20;           /* Give penalty to white    */
-            else score += 20;                     /* Give penalty to black    */
-        } for (int r = 0; r < 8; r++) {           /* Loop over adjacent file  */
+        int doubled = 0;                          /* Doubled pawn flag        */
+        for (int r = 0; r < 8; r++) {             /* Loop over adjacent file  */
             if (file > 0 &&                       /* Not A-file               */
               board[r * 16 + file - 1] == pce)    /* No friendly pawn left    */
               isolated = 0;                       /* Pawn is isolated         */
             if (file < 7 &&                       /* Not H-file               */
               board[r * 16 + file + 1] == pce)    /* No friendly pawn right   */
               isolated = 0;                       /* Pawn is isolated         */
-        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check enemy pawns ahead  */
+        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check pawns ahead        */
              r >= 0 && r < 8;                     /* on same and              */
              r += (dir < 0 ? -1 : 1)) {           /* adjacent files           */
             if (board[r * 16 + file] == oPawn)    /* Enemy pawn on same file  */
               passed = 0;                         /* Pawn is not passed       */
+            if (board[r * 16 + file] == pce)      /* Own pawn on same file    */
+              doubled = 1;                        /* Pawn is doubled          */
             if (file > 0 &&                       /* Not A-file               */
               board[r * 16 + file - 1] == oPawn)  /* Enemy pawn left          */
               passed = 0;                         /* Pawn is not passed       */
             if (file < 7 &&                       /* Not H-file               */
               board[r * 16 + file + 1] == oPawn)  /* Enemy pawn right         */
               passed = 0;                         /* Pawn is not passing      */
+        } if (doubled) {                          /* Pawn is doubled          */
+            if (pce == 10) score -= 20;           /* Give penalty to white    */
+            else score += 20;                     /* Give penalty to black    */
         } if (isolated) {                         /* Pawn is isolated         */
             if (pce == 10) score -= 20;           /* Give penalty to white    */
             else score += 20;                     /* Give penalty to black    */
