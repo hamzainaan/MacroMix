@@ -831,7 +831,7 @@ void printBoard() {                               /* Print board to console   */
 }                                                 /* End printBoard function  */
 /******************************************************************************/
 char *moveStr(Move move) {                        /* Convert move to string   */
-  static char mStr[5];                            /* Move string              */
+  static char mStr[6];                            /* Move string              */
   mStr[0] = (move.src & 7) + 'a',                 /* Source file              */
   mStr[1] = 8 - ((move.src >> 4) & 7) + '0',      /* Source rank              */
   mStr[2] = (move.dst & 7) + 'a',                 /* Target file              */
