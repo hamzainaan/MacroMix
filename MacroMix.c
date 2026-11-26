@@ -883,6 +883,7 @@ void printResult() {                              /* Game result              */
 /******************************************************************************/
 Move parseMove(char *moveStr) {                   /* Parse move string        */
   Move illegal = { 0 };                           /* No move                  */
+  if (strlen(moveStr) < 4) return illegal;
   int srcFile = moveStr[0] - 'a';                 /* Extract source file      */
   int srcRank = 8 - (moveStr[1] - '0');           /* Extract source rank      */
   int dstFile = moveStr[2] - 'a';                 /* Extract target file      */
