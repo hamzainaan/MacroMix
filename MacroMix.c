@@ -610,6 +610,9 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
+    if (score + material[move.capPce & 7] +       /* Delta pruning, capture   */
+        200 <= alpha && move.prom == 0)           /* can not raise alpha      */
+      continue;                                   /* Skip hopeless capture    */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     int score = -quiesce(ply + 1, -beta, -alpha); /* Quiescence search        */
     undo();                                       /* Take move back           */
