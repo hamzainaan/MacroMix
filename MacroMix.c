@@ -852,7 +852,7 @@ char *gameStr() {                                 /* Game moves sequence      */
 /******************************************************************************/
 void printResult() {                              /* Game result              */
   MList mList; genMoves(&mList, 0);               /* Generate moves           */
-  int legalMoves = 0;                             /* Legal moves counter      */
+  int legalMoves = 0; setHash();                  /* Legal moves counter      */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */
     if (make(mList.moves[i]) == 0) continue;      /* Make only legal moves    */
     legalMoves++; undo();                         /* Count moves, take back   */
