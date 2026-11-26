@@ -314,6 +314,7 @@ int attack(int sq, int color) {                   /* Square attacked by color */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
+  if (gamePly >= 1024) return 0;
   game[gamePly].move = move;                      /* Save move into a game    */
   game[gamePly].side = side;                      /* Save side to move        */
   game[gamePly].ep = ep;                          /* Save en passant square   */
