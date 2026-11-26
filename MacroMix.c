@@ -419,7 +419,7 @@ int bookMove() {                                  /* Make book move if any    */
         char *next = &bookLine[strlen(gameLine)]; /* Extract next book move   */
         Move move = parseMove(next);              /* Parse book move          */
         bookMoves.moves[bookMoves.count] = move;  /* Add book move to list    */
-        bookMoves.count++;                        /* Increment move counter   */
+        if (move.pce) bookMoves.count++;          /* Count only legal moves   */
       }                                           /*                          */
     }                                             /*                          */
   } if (bookMoves.count == 0) return 0;           /* No book move found       */
