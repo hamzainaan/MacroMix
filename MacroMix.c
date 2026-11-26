@@ -30,6 +30,15 @@
 #else                                             /*                          */
   #include "sys/time.h"                           /* UNIX-like gettimeofday() */
 #endif                                            /*                          */
+#ifndef ENGINE_NAME                               /*                          */
+  #define ENGINE_NAME "MacroMix"                  /*                          */
+#endif                                            /*                          */
+#ifndef ENGINE_VERSION                            /*                          */
+  #define ENGINE_VERSION "dev"                    /*                          */
+#endif                                            /*                          */
+#ifndef ENGINE_AUTHOR                             /*                          */
+  #define ENGINE_AUTHOR "CMK"                     /*                          */
+#endif                                            /*                          */
 /******************************************************************************/
 /*                                Definitions                                 */
 /*                                                                            */
@@ -918,7 +927,8 @@ void loadGame(char *moves) {                      /* Load user game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("MacroMix, v1.4 by CMK\n");              /* Engine info for GUI      */
+  printf("%s, v%s by %s\n", ENGINE_NAME,          /* Engine info for GUI      */
+         ENGINE_VERSION, ENGINE_AUTHOR);          /*                          */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */

@@ -1,3 +1,7 @@
+NAME     = MacroMix
+VERSION  = 1.4
+AUTHOR   = CMK
+
 CC       = gcc
 CFLAGS   = -Wall -O3
 CPPFLAGS =
@@ -7,10 +11,14 @@ LDLIBS   =
 SRC      = MacroMix.c
 TARGET   = MacroMix
 
+DEFINES  = -DENGINE_NAME='"$(NAME)"' \
+           -DENGINE_VERSION='"$(VERSION)"' \
+           -DENGINE_AUTHOR='"$(AUTHOR)"'
+
 all: $(TARGET)
 
 $(TARGET): $(SRC) Makefile
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(SRC) -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CC) $(CPPFLAGS) $(DEFINES) $(CFLAGS) $(SRC) -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
 	rm -f $(TARGET)
