@@ -426,7 +426,7 @@ int bookMove() {                                  /* Make book move if any    */
   srand(time(NULL));                              /* Set random seed          */
   int rIndex = rand() % bookMoves.count;          /* Pick random move index   */
   Move bestMove = bookMoves.moves[rIndex];        /* Pick random book move    */
-  make(bestMove);                                 /* Play book move on board  */
+  setHash(); make(bestMove);                      /* Play book move on board  */
   if (cli) printf("Book ");                       /* Print "Book" in CLI mode */
   printf("move %s", moveStr(bestMove));           /* CECP move output         */
   printf("\n");                                   /* Print best move          */
