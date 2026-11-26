@@ -26,6 +26,7 @@ CECP-compatible engine.
  - Opening book with 240 lines up to 16 plies
  - Configurable Makefile (engine name, version, author & compiler flags)
  - CLI mode with board flip & game loading
+ - Infinite analysis mode
  - Basic Winboard/Xboard (CECP) support.
 
 # How strong is it?
