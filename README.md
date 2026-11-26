@@ -11,12 +11,19 @@ CECP-compatible engine.
  - PV, MVV/LVA, killer & history move ordering
  - Iterative deepening
  - Negamax with alpha-beta pruning
+ - Principal variation search
+ - Null move pruning
+ - Check extension
+ - Transposition table (~1MB) with Zobrist hashing
+ - Repetition & fifty move rule detection
  - Quiescence search
  - Simplified evaluation function
+ - Pawn structure: doubled, isolated & passed pawns
  - Texel tuned material, piece-square tables & pawn structure
  - Triangular PV
  - Opening book with 240 lines up to 16 plies
  - Configurable Makefile (engine name, version, author & compiler flags)
+ - CLI mode with board flip & game loading
  - Basic Winboard/Xboard (CECP) support.
 
 # How strong is it?
