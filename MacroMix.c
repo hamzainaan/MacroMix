@@ -1,5 +1,5 @@
 /******************************************************************************/
-/*                               MacroMix, v1.4                               */
+/*                               MacroMix, v1.5                               */
 /*                                                                            */
 /*       A mix of most essential and basic chess programming techniques       */
 /*          bundled into a single didactic CECP chess engine, by CMK          */

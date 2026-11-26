@@ -1,5 +1,5 @@
 NAME     = MacroMix
-VERSION  = 1.4
+VERSION  = 1.5
 AUTHOR   = CMK
 
 CC       = gcc
