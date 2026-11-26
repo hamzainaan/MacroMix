@@ -93,6 +93,7 @@ int pvLength[64];                                 /* PV length at given ply   */
 Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
+Move bestMove;
 #define TT_SIZE (1 << 16)                         /* Transposition table size */
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
@@ -464,7 +465,7 @@ void think() {                                    /* Engine move              */
   memset(pvLength,0,sizeof(pvLength));            /* Reset PV length table    */
   memset(killMoves,0,sizeof(killMoves));          /* Reset killers table      */
   memset(histScores,0,sizeof(histScores));        /* Reset history table      */
-  Move bestMove = { 0 };                          /* Init PV move holder      */
+  bestMove = (Move){ 0 };                         /* Init PV move holder      */
   for (int d = 1; d <= sd; d++) {                 /* Iterative deepening      */
     int s = search(d, 0, -50000, 50000, 1);       /* Search best move         */
     if (stop) break;                              /* Time is up or game over  */
@@ -494,7 +495,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   if (depth == 0)                                 /* Main search is done      */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
-  if ((nodes & 1023) == 0)                        /* Check time control       */
+  if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
     if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   setHash();                                      /* Update position hash     */
@@ -579,7 +580,7 @@ int search(int depth, int ply,                    /* Negamax search           */
 int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
   if (stop) return 0;                             /* Time is up, return       */
   nodes++;                                        /* Count searched positions */
-  if ((nodes & 1023) == 0)                        /* Check time control       */
+  if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
     if ((getTimeMs() - tick) >= st) stop = 1;     /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
   if (ply >= 62) return eval();                   /* Too deep, evaluate       */
