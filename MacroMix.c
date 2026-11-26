@@ -98,7 +98,7 @@ Move bestMove;
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
-int flip, cli = 1, post = 0, mps, inc;            /*                          */
+int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 0, 100, 358, 397, 631, 1217 };    /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -984,7 +984,7 @@ int main() {                                      /* Xboard / Winboard driver */
              &mps, &sec);                         /* and time increment       */
       inc = sec * 1000; continue;                 /* Increment in ms          */
     } if (!strncmp(command, "time", 4)) {         /* CECP command "time"      */
-      int ms = atoi(command + 5) * 10;            /* Remaining time in ms     */
+      int ms = atoi(command + 5) * 10 - lag;      /* Remaining time in ms     */
       int mtg = 30;                               /* Default moves to go      */
       if (mps)                                    /* Moves per session given  */
         mtg = mps - (gamePly + 1) / 2 % mps;      /* Moves to time control    */
