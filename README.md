@@ -27,7 +27,12 @@ CECP-compatible engine.
  - Basic Winboard/Xboard (CECP) support.
 
 # How strong is it?
-Version 1.4 beats TSCP 5.5-4.5
+| Version | Opponent   | Games | Wins | Losses | Draws | Score | Elo        |
+|---------|------------|-------|------|--------|-------|-------|------------|
+| 1.5     | TSCP 1.83b | 1000  | 774  | 126    | 100   | 82.4% | +268 ± 26 |
+
+Time control 5+0.05, openings from the MacroMix book played with both colors,
+engine books disabled.
 
 # How to compile it?
 Simly run **make** or the explicit command:
