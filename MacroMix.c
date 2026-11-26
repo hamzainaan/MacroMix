@@ -503,7 +503,7 @@ int search(int depth, int ply,                    /* Negamax search           */
     for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
       if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
       int pce = board[sq], pceType = pce & 7;     /* Get piece. extract type  */
-      if (pce && pceType != 1 && (pce & side)) {  /* Pieces of side to move   */
+      if (pce && pceType > 2 && (pce & side)) {   /* Pieces of side to move   */
         matScore += material[pceType];            /* Count all but pawns      */
       }                                           /*                          */
     } int rDepth = (matScore > 1500) ? 2 : 1;     /* Calculat reduce depth    */
