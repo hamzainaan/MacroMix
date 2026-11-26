@@ -74,7 +74,7 @@ FILE *bookFile;                                   /* Opening book file        */
 /******************************************************************************/
 Game game[1024];                                  /* Game moves history       */
 int gamePly;                                      /* Game moves history ply   */
-int nodes;                                        /* Number of positions      */ 
+long long nodes;                                  /* Number of positions      */ 
 int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
@@ -471,7 +471,7 @@ void think() {                                    /* Engine move              */
     int s = search(d, 0, -50000, 50000, 1);       /* Search best move         */
     if (stop) break;                              /* Time is up or game over  */
     bestMove = pvTable[0][0];                     /* Record last best move    */
-    if (post) { printf("%d %d %d %d ",            /* Engine search output     */
+    if (post) { printf("%d %d %d %lld ",          /* Engine search output     */
       d, s, (getTimeMs()-tick)/10, nodes);        /* depth/score/time/nodes   */
     for (int i = 0; i < pvLength[0]; i++) {       /* Loop over PV line        */
       Move move = pvTable[0][i];                  /* Get PV move              */
@@ -1035,7 +1035,7 @@ int main() {                                      /* Xboard / Winboard driver */
       int d = atoi(command + 6);                  /* Parse perft depth        */
       printf("Perft depth %d ", d); perft(d);     /* Run test                 */
       int time = getTimeMs() - tick;              /* Stop timer               */
-      printf("nodes %d time %d\n", nodes, time);  /* Print result             */
+      printf("nodes %lld time %d\n",nodes,time);  /* Print result             */
       continue;                                   /* Read next command        */
     } if (!strcmp(command, "board")) {            /* CLI command "board"      */
       printBoard(); continue;                     /* Print board to console   */
