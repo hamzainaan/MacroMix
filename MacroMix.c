@@ -97,7 +97,7 @@ Move bestMove;
 #define TT_SIZE (1 << 16)                         /* Transposition table size */
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
-int force, tick, stop, sd = 63, st = 1000;        /* CECP control variables   */
+int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
 int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 0, 100, 358, 397, 631, 1217 };    /**/
@@ -979,11 +979,11 @@ int main() {                                      /* Xboard / Winboard driver */
         if (cli) printBoard();                    /* Print board to console   */
         continue;                                 /* Process next command     */
     } if (!strncmp(command, "level", 5)) {        /* CECP command "level"     */
-      float sec = 0; mps = 0;                     /* Reset level parameters   */
+      float sec = 0; mps = 0; fixed = 0;          /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
              &mps, &sec);                         /* and time increment       */
       inc = sec * 1000; continue;                 /* Increment in ms          */
-    } if (!strncmp(command, "time", 4)) {         /* CECP command "time"      */
+    } if (!strncmp(command,"time",4) && !fixed) { /* CECP command "time"      */
       int ms = atoi(command + 5) * 10 - lag;      /* Remaining time in ms     */
       int mtg = 30;                               /* Default moves to go      */
       if (mps)                                    /* Moves per session given  */
@@ -999,8 +999,8 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "force")) {            /* CECP command "force"     */
       force = 1; continue;                        /* Computer plays neither   */
     } if (!strncmp(command, "st", 2)) {           /* CECP command "st"        */
-      st = atoi(command + 3) * 1000;              /* Fixed time search mode   */
-      sd = 63; continue;                          /* "Infinite" search depth  */
+      st = atoi(command + 3) * 1000 - lag;        /* Fixed time search mode   */
+      sd = 63; fixed = 1; continue;               /* "Infinite" search depth  */
     } if (!strncmp(command, "sd", 2)) {           /* CECP command "sd"        */
       sd = atoi(command + 3);                     /* Fixed depth search mode  */
       st = 1e6; continue;                         /* "Infinite" search time   */
