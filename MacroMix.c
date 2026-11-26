@@ -93,7 +93,7 @@ int pvLength[64];                                 /* PV length at given ply   */
 Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
-Move bestMove;
+Move bestMove;                                    /* Best move to play        */
 #define TT_SIZE (1 << 16)                         /* Transposition table size */
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
@@ -316,7 +316,7 @@ int attack(int sq, int color) {                   /* Square attacked by color */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
-  if (gamePly >= 1024) return 0;
+  if (gamePly >= 1024) return 0;                  /* Game history is full     */
   game[gamePly].move = move;                      /* Save move into a game    */
   game[gamePly].side = side;                      /* Save side to move        */
   game[gamePly].ep = ep;                          /* Save en passant square   */
@@ -911,7 +911,7 @@ void printResult() {                              /* Game result              */
 /******************************************************************************/
 Move parseMove(char *moveStr) {                   /* Parse move string        */
   Move illegal = { 0 };                           /* No move                  */
-  if (strlen(moveStr) < 4) return illegal;
+  if (strlen(moveStr) < 4) return illegal;        /* Move string too short    */
   int srcFile = moveStr[0] - 'a';                 /* Extract source file      */
   int srcRank = 8 - (moveStr[1] - '0');           /* Extract source rank      */
   int dstFile = moveStr[2] - 'a';                 /* Extract target file      */
