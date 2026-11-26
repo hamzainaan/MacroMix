@@ -920,7 +920,7 @@ int main() {                                      /* Xboard / Winboard driver */
   openBook();                                     /* Load opening book        */
   printf("MacroMix, v1.4 by CMK\n");              /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
-  char input[80] = "new";                         /* Run "new" to init engine */
+  char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
   do {                                            /* User command loop        */
     char command[2048] = { 0 };                   /* User command storage     */                 
