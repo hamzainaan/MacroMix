@@ -13,7 +13,10 @@ CECP-compatible engine.
  - Negamax with alpha-beta pruning
  - Quiescence search
  - Simplified evaluation function
+ - Texel tuned material, piece-square tables & pawn structure
  - Triangular PV
+ - Opening book with 240 lines up to 16 plies
+ - Configurable Makefile (engine name, version, author & compiler flags)
  - Basic Winboard/Xboard (CECP) support.
 
 # How strong is it?
