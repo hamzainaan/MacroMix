@@ -710,7 +710,7 @@ int inCheck(int color) {                          /* Is king in check ?       */
 }                                                 /*                          */
 /******************************************************************************/
 void setHash() {                                  /* Encode board position    */
-  hash = 0;                                       /* Reset position hash key  */
+  hash = hashPiece[side >> 4][0][0];              /* Side to move hash key    */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     int pce = board[sq];                          /* Get square contents      */
