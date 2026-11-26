@@ -906,7 +906,7 @@ void loadGame(char *moves) {                      /* Load user game           */
     if (move.pce == 0) {                          /* Illegal move             */
       printf("Illegal move: %s\n", mStr);         /* Inform user              */
       break;                                      /* Load no more moves       */
-    } make(move);                                 /* Load game move           */
+    } setHash(); make(move);                      /* Load game move           */
     mStr = strtok(NULL, " ");                     /* Extract next move        */
   } printBoard();                                 /* Print board to console   */
   printf("Game has been loaded\n");               /* Inform user game loaded  */
