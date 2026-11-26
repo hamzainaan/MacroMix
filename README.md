@@ -1,7 +1,7 @@
 # MacroMix
 Xboard/Winboard Chess Engine by CMK
 
-[![Play on Lichess](https://img.shields.io/badge/Play%20on-Lichess-white?style=for-the-badge&logo=lichess&logoColor=black)](https://lichess.org/?user=MacroMix#friend)
+[![Play on Lichess](https://img.shields.io/badge/Play%20on-Lichess-white?style=for-the-badge&logo=lichess&logoColor=white)](https://lichess.org/?user=MacroMix#friend)
 
 # Description
 MacroMix is a compact, didactic chess engine combining the most
