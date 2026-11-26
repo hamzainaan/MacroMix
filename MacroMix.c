@@ -1013,7 +1013,8 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
       continue;                                   /* Process next command     */
     } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
-      printf("feature ping=1 done=1\n");          /* Prevent GUI delay        */
+      printf("feature ping=1 setboard=1\n");
+      printf("feature done=1\n");                 /* Prevent GUI delay        */
     } if (!strncmp(command, "ping", 4)) {
       printf("pong %s\n", command + 5); continue;
     } if (!strcmp(command, "new")) {              /* CECP command "new"       */
@@ -1046,6 +1047,36 @@ int main() {                                      /* Xboard / Winboard driver */
         setHash();                                /* Hash position            */
         if (cli) printBoard();                    /* Print board to console   */
         continue;                                 /* Process next command     */
+    } if (!strncmp(command, "setboard", 8)) {
+      char pos[128] = "", stm = 'w', cas[5] = "", eps[3] = "";
+      char *pieces = "kpnbrqKPNBRQ";
+      fifty = 0;
+      sscanf(command + 8, "%127s %c %4s %2s %d", pos, &stm, cas, eps, &fifty);
+      for (int sq = 0; sq < 128; sq++)
+        if (!(sq & 0x88)) board[sq] = 0;
+      int sq = 0;
+      for (char *c = pos; *c && sq < 128; c++) {
+        char *p = strchr(pieces, *c);
+        if (*c == '/') sq = (sq + 15) & ~15;
+        else if (*c >= '1' && *c <= '8') sq += *c - '0';
+        else if (p && !(sq & 0x88)) {
+          int color = p - pieces < 6 ? 16 : 8;
+          int type = (p - pieces) % 6 + 1;
+          board[sq] = color | type;
+          if (type == 1) kingSq[color >> 4] = sq;
+          sq++;
+        }
+      }
+      side = stm == 'b' ? 16 : 8;
+      castle = (strchr(cas, 'K') ? 1 : 0) | (strchr(cas, 'Q') ? 2 : 0) |
+               (strchr(cas, 'k') ? 4 : 0) | (strchr(cas, 'q') ? 8 : 0);
+      ep = -1;
+      if (eps[0] >= 'a' && eps[0] <= 'h' && eps[1] >= '1' && eps[1] <= '8')
+        ep = (eps[0] - 'a') + (8 - (eps[1] - '0')) * 16;
+      gamePly = 0;
+      setHash();
+      if (cli) printBoard();
+      continue;
     } if (!strncmp(command, "level", 5)) {        /* CECP command "level"     */
       float sec = 0; mps = 0; fixed = 0;          /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
