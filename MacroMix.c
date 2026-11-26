@@ -1013,7 +1013,9 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
       continue;                                   /* Process next command     */
     } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
-      printf("feature done=1\n");                 /* Prevent GUI delay        */
+      printf("feature ping=1 done=1\n");          /* Prevent GUI delay        */
+    } if (!strncmp(command, "ping", 4)) {
+      printf("pong %s\n", command + 5); continue;
     } if (!strcmp(command, "new")) {              /* CECP command "new"       */
       srand(0);                                   /* Set random seed          */
       for (int col = 0; col < 2; col++)           /* Loop over color types    */
