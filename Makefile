@@ -12,7 +12,7 @@ SRC      = MacroMix.c
 TARGET   = MacroMix
 
 DEFINES  = -DENGINE_NAME='"$(NAME)"' \
-           -DENGINE_VERSION='"$(VERSION)"' \
+           $(if $(VERSION),-DENGINE_VERSION='"$(VERSION)"') \
            -DENGINE_AUTHOR='"$(AUTHOR)"'
 
 all: $(TARGET)

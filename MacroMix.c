@@ -33,8 +33,10 @@
 #ifndef ENGINE_NAME                               /*                          */
   #define ENGINE_NAME "MacroMix"                  /*                          */
 #endif                                            /*                          */
-#ifndef ENGINE_VERSION                            /*                          */
-  #define ENGINE_VERSION "dev"                    /*                          */
+#ifdef ENGINE_VERSION                             /*                          */
+  #define ENGINE ENGINE_NAME ", v" ENGINE_VERSION /*                          */
+#else                                             /*                          */
+  #define ENGINE ENGINE_NAME "-dev"               /*                          */
 #endif                                            /*                          */
 #ifndef ENGINE_AUTHOR                             /*                          */
   #define ENGINE_AUTHOR "CMK"                     /*                          */
@@ -927,8 +929,7 @@ void loadGame(char *moves) {                      /* Load user game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("%s, v%s by %s\n", ENGINE_NAME,          /* Engine info for GUI      */
-         ENGINE_VERSION, ENGINE_AUTHOR);          /*                          */
+  printf("%s by %s\n", ENGINE, ENGINE_AUTHOR);    /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
