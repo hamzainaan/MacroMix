@@ -456,8 +456,8 @@ void closeBook() {                                /* Close book file          */
 /*                                                                            */
 /******************************************************************************/
 void think() {                                    /* Engine move              */
-  if (bookMove()) return;                         /* Make book move if any    */
   tick = getTimeMs();                             /* Start timer              */
+  if (bookMove()) return;                         /* Make book move if any    */
   stop = 0;                                       /* Reset stop flag          */
   nodes = 0;                                      /* Reset position count     */
   memset(pvTable,0,sizeof(pvTable));              /* Reset PV table           */
