@@ -5,16 +5,28 @@
 /*          bundled into a single didactic CECP chess engine, by CMK          */
 /*                                                                            */
 /******************************************************************************/
-/*                                  Contents                                  */
+/*                                  Features                                  */
 /*                                                                            */
-/* - Compact move generator inspired by H.G. Muller's micro-Max               */
-/* - Negamax search and internal opening book inspired by Tom Kerrigan's TSCP */
-/* - Null move pruning inspired by N. Blais' implementation in TSCP           */
-/* - Simplified evaluation function proposed by Tomasz Michniewski            */
-/* - Simple 32-bit piece only Zobrist hashing                                 */
-/* - Fixed size (~1MB) Transposition table                                    */
-/* - Principle variation search                                               */
-/* - Winboard/Xboard communication protocol                                   */
+/******************************************************************************/
+/* - Compact move generator                                                   */
+/* - TT, PV, MVV/LVA, killer & history move ordering                          */
+/* - Iterative deepening                                                      */
+/* - Negamax with alpha-beta pruning                                          */
+/* - Principal variation search                                               */
+/* - Null move pruning                                                        */
+/* - Late move reductions                                                     */
+/* - Reverse futility pruning                                                 */
+/* - Check extension                                                          */
+/* - Transposition table (~1MB) with Zobrist hashing                          */
+/* - Repetition & fifty move rule detection                                   */
+/* - Quiescence search with delta pruning                                     */
+/* - Simplified evaluation function                                           */
+/* - Pawn structure: doubled, isolated & passed pawns                         */
+/* - Texel tuned material, piece-square tables & pawn structure               */
+/* - Triangular PV                                                            */
+/* - Opening book with 240 lines up to 16 plies                               */
+/* - CLI mode with board flip & game loading                                  */
+/* - Winboard/Xboard (CECP) support                                           */
 /*                                                                            */
 /******************************************************************************/
 /*                                  Headers                                   */
@@ -32,20 +44,11 @@
   #include "sys/time.h"                           /* UNIX-like gettimeofday() */
   #include "sys/select.h"                         /*                          */
 #endif                                            /*                          */
-#ifndef ENGINE_NAME                               /*                          */
-  #define ENGINE_NAME "MacroMix"                  /*                          */
-#endif                                            /*                          */
-#ifdef ENGINE_VERSION                             /*                          */
-  #define ENGINE ENGINE_NAME ", v" ENGINE_VERSION /*                          */
-#else                                             /*                          */
-  #define ENGINE ENGINE_NAME "-dev"               /*                          */
-#endif                                            /*                          */
-#ifndef ENGINE_AUTHOR                             /*                          */
-  #define ENGINE_AUTHOR "CMK"                     /*                          */
-#endif                                            /*                          */
 /******************************************************************************/
 /*                                Definitions                                 */
 /*                                                                            */
+/******************************************************************************/
+#define VERSION "1.5"                             /* Engine version           */
 /******************************************************************************/
 typedef struct {                                  /*                          */
   int src, dst, capSq;                            /* Move & captured squares  */
@@ -1032,7 +1035,7 @@ void newGame() {                                  /* Start new game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
-  printf("%s by %s\n", ENGINE, ENGINE_AUTHOR);    /* Engine info for GUI      */
+  printf("MacroMix, v%s by CMK\n", VERSION);      /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
