@@ -1166,7 +1166,7 @@ int main() {                                      /* Xboard / Winboard driver */
       if (mtg > 30) mtg = 30;                     /* Limit moves to go        */
       st = ms / mtg + inc;                        /* Set time control         */
       if (st > ms / 2) st = ms / 2;               /* Keep safety time margin  */
-      sd = 63; continue;                          /* "Infinite" search depth  */
+      continue;                                   /* Process next command     */
     } if (!strcmp(command, "white")) {            /* CECP command "white"     */
       force = 0; side = 8; setHash(); continue;   /* Computer plays white     */
     } if (!strcmp(command, "black")) {            /* CECP command "black"     */
