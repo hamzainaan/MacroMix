@@ -81,6 +81,7 @@ int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
 int pieceScore, sideMaterial[2];                  /* Incremental eval sums    */
+int pawnBits[2][10];                              /* Pawn rank bits by file   */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -669,39 +670,22 @@ int eval() {                                      /* Static evaluation        */
   int score = pieceScore;                         /* Material & positional    */
   int kingWhite = kingSq[0];                      /* White king square        */
   int kingBlack = kingSq[1];                      /* Black king square        */
-  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
-    int pce = board[sq];                          /* Get square contents      */
-    int pceType = pce & 7;                        /* Extract piece type       */
-    if (pceType == 2) {                           /* Pawn structure scoring   */
-        int oPawn = pce ^ 24;                     /* Enemy pawn               */
-        int dir = (pce == 10) ? -16 : 16;         /* Pawn move direction      */
-        int file = sq & 7;                        /* Pawn file                */
-        int rank = sq >> 4;                       /* Pawn rank                */
-        int isolated = 1;                         /* Isolated pawn flag       */
-        int passed = 1;                           /* Passed pawn flag         */
-        int doubled = 0;                          /* Doubled pawn flag        */
-        for (int r = 0; r < 8; r++) {             /* Loop over adjacent file  */
-            if (file > 0 &&                       /* Not A-file               */
-              board[r * 16 + file - 1] == pce)    /* Friendly pawn on left    */
-              isolated = 0;                       /* Pawn is not isolated     */
-            if (file < 7 &&                       /* Not H-file               */
-              board[r * 16 + file + 1] == pce)    /* Friendly pawn on right   */
-              isolated = 0;                       /* Pawn is not isolated     */
-        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check pawns ahead        */
-             r >= 0 && r < 8;                     /* on same and              */
-             r += (dir < 0 ? -1 : 1)) {           /* adjacent files           */
-            if (board[r * 16 + file] == oPawn)    /* Enemy pawn on same file  */
-              passed = 0;                         /* Pawn is not passed       */
-            if (board[r * 16 + file] == pce)      /* Own pawn on same file    */
-              doubled = 1;                        /* Pawn is doubled          */
-            if (file > 0 &&                       /* Not A-file               */
-              board[r * 16 + file - 1] == oPawn)  /* Enemy pawn left          */
-              passed = 0;                         /* Pawn is not passed       */
-            if (file < 7 &&                       /* Not H-file               */
-              board[r * 16 + file + 1] == oPawn)  /* Enemy pawn right         */
-              passed = 0;                         /* Pawn is not passed       */
-        } if (doubled) {                          /* Pawn is doubled          */
+  for (int col = 0; col < 2; col++)               /* Loop over both colors    */
+    for (int file = 1; file < 9; file++)          /* Loop over padded files   */
+      for (int rank = 1; rank < 7; rank++) {      /* Loop over pawn ranks     */
+        if (!(pawnBits[col][file] >> rank & 1))   /* No pawn on the square    */
+          continue;                               /* Skip to next square      */
+        int pce = col ? 18 : 10;                  /* Pawn of this color       */
+        int *own = pawnBits[col];                 /* Own pawns by file        */
+        int *opp = pawnBits[col ^ 1];             /* Enemy pawns by file      */
+        int ahead = col ? 255 << (rank + 1)       /* Ranks ahead of the pawn  */
+                        : (1 << rank) - 1;        /* for black or for white   */
+        int isolated = !own[file - 1] &&          /* No own pawns on          */
+                       !own[file + 1];            /* adjacent files           */
+        int doubled = own[file] & ahead;          /* Own pawn ahead on file   */
+        int passed = !((opp[file - 1] | opp[file] /* No enemy pawns ahead on  */
+                      | opp[file + 1]) & ahead);  /* same or adjacent files   */
+        if (doubled) {                            /* Pawn is doubled          */
             if (pce == 10) score -= 9;            /* Give penalty to white    */
             else score += 9;                      /* Give penalty to black    */
         } if (isolated) {                         /* Pawn is isolated         */
@@ -714,8 +698,8 @@ int eval() {                                      /* Static evaluation        */
             if (pce == 10) score += bonus;        /* Give bonus to white      */
             else score -= bonus;                  /* Give bonus to black      */
         }                                         /*                          */
-    }                                             /*                          */
-  } if (sideMaterial[0] < 1350) kingWhite += 8;   /* White king in an endgame */
+      }                                           /*                          */
+  if (sideMaterial[0] < 1350) kingWhite += 8;     /* White king in an endgame */
   if (sideMaterial[1] < 1350) kingBlack += 8;     /* Black king in an endgame */
   score += pst[1][kingWhite];                     /* White king score         */
   score -= pst[1][kingBlack ^ 112];               /* Black king score         */
@@ -725,6 +709,9 @@ int eval() {                                      /* Static evaluation        */
 void updateEval(int pce, int sq, int sign) {      /* Add or remove its score  */
   int col = pce >> 4, type = pce & 7;             /* Piece color & type       */
   sideMaterial[col] += sign * material[type];     /* Count side material      */
+  if (type == 2)                                  /* Piece is a pawn          */
+    pawnBits[col][(sq & 7) + 1] ^=                /* Toggle its rank bit      */
+      1 << (sq >> 4);                             /* on its padded file       */
   if (type == 1) return;                          /* Kings are scored in eval */
   if (col) { sign = -sign; sq ^= 112; }           /* Black: negate & mirror   */
   pieceScore += sign * material[type];            /* Material score           */
@@ -734,6 +721,7 @@ void updateEval(int pce, int sq, int sign) {      /* Add or remove its score  */
 void initEval() {                                 /* Score board from scratch */
   pieceScore = 0;                                 /* Reset piece score        */
   sideMaterial[0] = sideMaterial[1] = 0;          /* Reset side material      */
+  memset(pawnBits, 0, sizeof(pawnBits));          /* Reset pawn rank bits     */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     if (board[sq])                                /* Square has a piece       */
