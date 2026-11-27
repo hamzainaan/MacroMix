@@ -87,6 +87,7 @@ int pieceScore, sideMaterial[2];                  /* Incremental eval sums    */
 int pawnBits[2][10];                              /* Pawn rank bits by file   */
 int lines[240];                                   /* Deltas on queen lines    */
 int noCheck;                                      /* Hint: side not in check  */
+int fromFen;                                      /* Position set up from FEN */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -469,7 +470,7 @@ int bookMove() {                                  /* Make book move if any    */
   bookMoves.count = 0;                            /* Reset move count         */
   char bookLine[2048];                            /* Book line storage        */
   char *gameLine = gameStr();                     /* Get game moves           */
-  if (bookFile != NULL) {                         /* Skip if no book file     */
+  if (bookFile != NULL && !fromFen) {             /* Skip if no book file     */
     fseek(bookFile, 0, SEEK_SET);                 /* Seek through book file   */
     while (fgets(bookLine, 2048, bookFile)) {     /* Read book line from file */
       int match = 1;                              /* Match line flag          */
@@ -1061,6 +1062,7 @@ void setBoard(char *fen) {                        /* Parse FEN                */
     ep = (eps[0] - 'a') +                         /*                          */
          (8 - (eps[1] - '0')) * 16;               /*                          */
   gamePly = 0;                                    /* Reset game ply           */
+  fromFen = 1;                                    /* Book lines do not apply  */
   setHash();                                      /* Hash position            */
   initEval();                                     /* Score position           */
 }                                                 /*                          */
@@ -1091,6 +1093,7 @@ void newGame() {                                  /* Start new game           */
     board[124] = 12;                              /* White both castling      */
     board[127] = 14;                              /* White O-O castling       */
     gamePly = 0;                                  /* Reset game ply           */
+    fromFen = 0;                                  /* Game from start position */
     force = 0;                                    /* Reset force mode         */
     setHash();                                    /* Hash position            */
     initEval();                                   /* Score position           */
