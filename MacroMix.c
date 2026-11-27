@@ -549,7 +549,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   int legalMoves = 0;                             /* Legal moves counter      */
   int score = 0;                                  /* Move score               */
   Move ttMove = { 0 }, best = { 0 };              /* TT move & best move      */
-  if (depth == 0)                                 /* Main search is done      */
+  if (depth == 0 && !inCheck(side))               /* Main search is done      */
     return quiesce(ply, alpha, beta);             /* Do quiescence search     */
   nodes++;                                        /* Count searched positions */
   if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
