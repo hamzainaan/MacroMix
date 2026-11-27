@@ -789,7 +789,7 @@ void scoreMoves(MList *mList, int ply,            /* Move scoring             */
 int reps() {                                      /* Repetition detection     */
   int reps = 0;                                   /* Position repetitions     */
   for (int i = gamePly - 2;                       /* Loop over game history   */
-       i >= gamePly - fifty; i -= 2)              /* Same side to move only   */
+       i >= 0 && i >= gamePly - fifty; i -= 2)    /* Same side to move only   */
     if (game[i].hash == hash) reps++;             /* Found repetition         */
   return reps;                                    /* Times position repeats   */
 }                                                 /*                          */
