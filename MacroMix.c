@@ -1162,7 +1162,7 @@ int main() {                                      /* Xboard / Winboard driver */
       int ms = atoi(command + 5) * 10 - lag;      /* Remaining time in ms     */
       int mtg = 30;                               /* Default moves to go      */
       if (mps)                                    /* Moves per session given  */
-        mtg = mps - (gamePly + 1) / 2 % mps;      /* Moves to time control    */
+        mtg = mps - gamePly / 2 % mps;            /* Moves to time control    */
       if (mtg > 30) mtg = 30;                     /* Limit moves to go        */
       st = ms / mtg + inc;                        /* Set time control         */
       if (st > ms / 2) st = ms / 2;               /* Keep safety time margin  */
