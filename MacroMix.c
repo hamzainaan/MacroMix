@@ -211,6 +211,7 @@ void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
 char *gameStr();                                  /* Get game moves string    */
 void printResult();                               /* Print game result        */
+void printHelp();                                 /* Print command reference  */
 Move parseMove(char *moveStr);                    /* Parse move string        */
 void loadGame(char *moves);                       /* Load game from string    */
 int readInput(char *input, int size);             /* Read user input          */
@@ -948,6 +949,32 @@ void printResult() {                              /* Game result              */
  printf("1/2-1/2 { Draw by fifty move rule }\n"); /* Draw by fifty move rule  */
 }                                                 /*                          */
 /******************************************************************************/
+void printHelp() {                                /* Print command reference  */
+  printf("\nxboard\tXboard mode\n");              /*                          */
+  printf("cli\tCLI mode\n");                      /*                          */
+  printf("mode\tcurrent mode\n");                 /*                          */
+  printf("new\tstart new game\n");                /*                          */
+  printf("white\twhite to play\n");               /*                          */
+  printf("black\tblack to play\n");               /*                          */
+  printf("force\tedit mode\n");                   /*                          */
+  printf("st 5000\tfixed time\n");                /*                          */
+  printf("sd 8\tfixed depth\n");                  /*                          */
+  printf("post\tprint PV lines\n");               /*                          */
+  printf("nopost\tthink quietly\n");              /*                          */
+  printf("go\tengine move\n");                    /* Command reference list   */
+  printf("analyze\tinfinite analysis\n");         /*                          */
+  printf("exit\tstop analysis\n");                /*                          */
+  printf("e2e4\tuser move\n");                    /*                          */
+  printf("undo\tundo move\n");                    /*                          */
+  printf("perft 5\tperft depth 5\n");             /*                          */
+  printf("board\tprint board\n");                 /*                          */
+  printf("flip\tflip board\n");                   /*                          */
+  printf("game\tprint moves\n");                  /*                          */
+  printf("load\tload e2e4 e7e5\n");               /*                          */
+  printf("help\tthis reference\n");               /*                          */
+  printf("quit\texit program\n\n");               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
 Move parseMove(char *moveStr) {                   /* Parse move string        */
   Move illegal = { 0 };                           /* No move                  */
   if (strlen(moveStr) < 4) return illegal;        /* Move string too short    */
@@ -1180,29 +1207,7 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strncmp(command, "load", 4)) {         /* CLI command "load"       */
       loadGame(command + 5); continue;            /* Load user game           */
     } if (!strcmp(command, "help")) {             /* CLI command "help"       */
-      printf("\nxboard\tXboard mode\n");          /*                          */
-      printf("cli\tCLI mode\n");                  /*                          */
-      printf("mode\tcurrent mode\n");             /*                          */
-      printf("new\tstart new game\n");            /*                          */
-      printf("white\twhite to play\n");           /*                          */
-      printf("black\tblack to play\n");           /*                          */
-      printf("force\tedit mode\n");               /*                          */
-      printf("st 5000\tfixed time\n");            /*                          */
-      printf("sd 8\tfixed depth\n");              /*                          */
-      printf("post\tprint PV lines\n");           /*                          */
-      printf("nopost\tthink quietly\n");          /*                          */
-      printf("go\tengine move\n");                /* Command reference list   */
-      printf("analyze\tinfinite analysis\n");     /*                          */
-      printf("exit\tstop analysis\n");            /*                          */
-      printf("e2e4\tuser move\n");                /*                          */
-      printf("undo\tundo move\n");                /*                          */
-      printf("perft 5\tperft depth 5\n");         /*                          */
-      printf("board\tprint board\n");             /*                          */
-      printf("flip\tflip board\n");               /*                          */
-      printf("game\tprint moves\n");              /*                          */
-      printf("load\tload e2e4 e7e5\n");           /*                          */
-      printf("help\tthis reference\n");           /*                          */
-      printf("quit\texit program\n\n");           /*                          */
+      printHelp();                                /* Print command reference  */
       continue;                                   /* Process next command     */
     } if (!strcmp(command, "quit")) break;        /* CECP command "quit"      */
   } while (readInput(input, sizeof(input)));      /* Read user input          */
