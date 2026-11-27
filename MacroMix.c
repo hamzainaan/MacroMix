@@ -174,6 +174,7 @@ void genMoves(MList *mList, int caps);            /* Generate moves/captures  */
 int attack(int sq, int color);                    /* Square attacked by side  */
 int make(Move move);                              /* Make move on board       */
 void undo();                                      /* Undo move on board       */
+void setSquare(int sq, int pce);                  /* Put piece on a square    */
 void perft(int d);                                /* Perft testing            */
 void think();                                     /* Play engine move         */
 void openBook();                                  /* Load opening book        */
@@ -323,6 +324,15 @@ int attack(int sq, int color) {                   /* Square attacked by color */
   } return 0;                                     /* Square is not attacked   */
 }                                                 /*                          */
 /******************************************************************************/
+void setSquare(int sq, int pce) {                 /* Put piece on a square    */
+  int old = board[sq];                            /* Piece leaving the square */
+  if (old)                                        /* Square was not empty     */
+    hash ^= hashPiece[old >> 4][old & 7][sq];     /* Unhash leaving piece     */
+  board[sq] = pce;                                /* Set new square contents  */
+  if (pce)                                        /* New piece on the square  */
+    hash ^= hashPiece[pce >> 4][pce & 7][sq];     /* Hash arriving piece      */
+}                                                 /*                          */
+/******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
   if (gamePly >= 1024) return 0;                  /* Game history is full     */
   game[gamePly].move = move;                      /* Save move into a game    */
@@ -332,9 +342,9 @@ int make(Move move) {                             /* Make move on board       */
   game[gamePly].fifty = fifty;                    /* Save fifty move count    */
   game[gamePly].hash = hash;                      /* Save hash key            */
   gamePly++;                                      /* Increment game ply       */
-  board[move.capSq] = 0;                          /* Empty captured square    */
-  board[move.src] = 0;                            /* Empty source square      */
-  board[move.dst] = move.pce;                     /* Move piece               */
+  setSquare(move.capSq, 0);                       /* Empty captured square    */
+  setSquare(move.src, 0);                         /* Empty source square      */
+  setSquare(move.dst, move.pce);                  /* Move piece               */
   if ((move.pce & 7) == 1)                        /* Piece is a king          */
     kingSq[side >> 4] = move.dst;                 /* Update king square       */
   ep = -1;                                        /* Reset en passant square  */
@@ -346,26 +356,32 @@ int make(Move move) {                             /* Make move on board       */
       (dstRank == ((side == 8) ? 4 : 3))          /* Target rank is 4th / 5th */
     ) ep = move.dst ^ 16;                         /* Set en passant square    */
     if ((move.dst >> 4) == (side == 8 ? 0 : 7)) { /* Pawn promotion           */
-      board[move.dst] = move.prom | side;         /* Promote to given piece   */
+      setSquare(move.dst, move.prom | side);      /* Promote to given piece   */
     }                                             /*                          */
   } if ((move.pce & 7) == 1 &&                    /* Piece is a king          */
      ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
     switch(move.dst) {                            /* Where king castled       */
       case 118:                                   /* Square G1                */
-        board[117] = 13; board[119] = 0; break;   /* Move rook from H1 to F1  */
+        setSquare(117, 13); setSquare(119, 0);    /* Move rook from H1 to F1  */
+        break;                                    /*                          */
       case 114:                                   /* Square C1                */
-        board[115] = 13; board[112] = 0; break;   /* Move rook from A1 to D1  */
+        setSquare(115, 13); setSquare(112, 0);    /* Move rook from A1 to D1  */
+        break;                                    /*                          */
       case 6:                                     /* Square G8                */
-        board[5] = 21; board[7] = 0; break;       /* Move rook from H8 to F8  */
+        setSquare(5, 21); setSquare(7, 0);        /* Move rook from H8 to F8  */
+        break;                                    /*                          */
       case 2:                                     /* Square C8                */
-        board[3] = 21; board[0] = 0; break;       /* Move rook from A8 to D8  */
+        setSquare(3, 21); setSquare(0, 0);        /* Move rook from A8 to D8  */
+        break;                                    /*                          */
     }                                             /*                          */
   } castle &= board[move.src + 8];                /* Update castling source   */
   castle &= board[move.dst + 8];                  /* Update castling target   */
   if (move.capPce || (move.pce & 7) == 2)         /* On capture or pawn move  */
     fifty = 0;                                    /* Reset fifty count        */
   else fifty++;                                   /* Increment fifty move     */
+  hash ^= hashPiece[side >> 4][0][0];             /* Unhash old side to move  */
   side = 24 - side;                               /* Swap the side to move    */
+  hash ^= hashPiece[side >> 4][0][0];             /* Hash new side to move    */
   if (inCheck(24 - side)) {                       /* King in check after move */
     undo();                                       /* Take move back           */
     return 0;                                     /* Return illegal move      */
@@ -380,25 +396,29 @@ void undo() {                                     /* Undo move on board       */
   ep = game[gamePly].ep;                          /* Load en passant square   */
   castle = game[gamePly].castle;                  /* Load castling rights     */
   fifty = game[gamePly].fifty;                    /* Load fifty move count    */
-  hash = game[gamePly].hash;                      /* Load hash key            */
-  board[move.dst] = 0;                            /* Empty target square      */
-  board[move.src] = move.pce;                     /* Move a piece back        */
-  board[move.capSq] = move.capPce;                /* Restore captured piece   */
+  setSquare(move.dst, 0);                         /* Empty target square      */
+  setSquare(move.src, move.pce);                  /* Move a piece back        */
+  setSquare(move.capSq, move.capPce);             /* Restore captured piece   */
   if ((move.pce & 7) == 1)                        /* Piece is a king          */
     kingSq[side >> 4] = move.src;                 /* Restore king square      */
   if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
      ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
     switch(move.dst) {                            /* Where king castled       */
       case 118:                                   /* Square G1                */
-        board[119] = 13; board[117] = 0; break;   /* Move rook from F1 to H1  */
+        setSquare(119, 13); setSquare(117, 0);    /* Move rook from F1 to H1  */
+        break;                                    /*                          */
       case 114:                                   /* Square C1                */
-        board[112] = 13; board[115] = 0; break;   /* Move rook from D1 to A1  */
+        setSquare(112, 13); setSquare(115, 0);    /* Move rook from D1 to A1  */
+        break;                                    /*                          */
       case 6:                                     /* Square G8                */
-        board[7] = 21; board[5] = 0; break;       /* Move rook from F8 to H8  */
+        setSquare(7, 21); setSquare(5, 0);        /* Move rook from F8 to H8  */
+        break;                                    /*                          */
       case 2:                                     /* Square C8                */
-        board[0] = 21; board[3] = 0; break;       /* Move rook from D8 to A8  */
+        setSquare(0, 21); setSquare(3, 0);        /* Move rook from D8 to A8  */
+        break;                                    /*                          */
     }                                             /*                          */
   }                                               /*                          */
+  hash = game[gamePly].hash;                      /* Load hash key            */
 }                                                 /*                          */
 /******************************************************************************/
 /*                                   Perft                                    */
@@ -511,7 +531,6 @@ int search(int depth, int ply,                    /* Negamax search           */
   if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
     if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
-  setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
   int pvNode = (beta - alpha) > 1;                /* Distinguish PV nodes     */
   int key  = hash ^ (side == 8 ?                  /* Get position key         */
@@ -541,7 +560,9 @@ int search(int depth, int ply,                    /* Negamax search           */
       int oldSide = side, oldEp = ep;             /*                          */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
       int oldFifty = fifty;                       /*                          */
+      hash ^= hashPiece[side >> 4][0][0];         /* Unhash old side to move  */
       side = 24 - side;                           /* Swap the side            */
+      hash ^= hashPiece[side >> 4][0][0];         /* Hash new side to move    */
       score = -search(depth - 1 - rDepth,         /* Use reduced depth        */
                    ply+1,-beta,-beta+1, 0);       /* Negamax search           */
       side = oldSide, ep = oldEp;                 /*                          */
