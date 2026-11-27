@@ -200,6 +200,7 @@ void scoreMoves(MList *mList, int ply,            /* Score moves in order     */
 int reps();                                       /* Find move repetitions    */
 int inCheck(int color);                           /* Side to move under check */
 void setHash();                                   /* Encode board position    */
+int stateKey();                                   /* Castling, en passant key */
 void ttStore(int key, int depth, int score,       /* Store move to            */
              int flag, int ply, Move move);       /* transposition table      */
 int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
@@ -363,6 +364,7 @@ int make(Move move) {                             /* Make move on board       */
   game[gamePly].fifty = fifty;                    /* Save fifty move count    */
   game[gamePly].hash = hash;                      /* Save hash key            */
   gamePly++;                                      /* Increment game ply       */
+  hash ^= stateKey();                             /* Unhash castling & ep     */
   setSquare(move.capSq, 0);                       /* Empty captured square    */
   setSquare(move.src, 0);                         /* Empty source square      */
   setSquare(move.dst, move.pce);                  /* Move piece               */
@@ -403,6 +405,7 @@ int make(Move move) {                             /* Make move on board       */
   hash ^= hashPiece[side >> 4][0][0];             /* Unhash old side to move  */
   side = 24 - side;                               /* Swap the side to move    */
   hash ^= hashPiece[side >> 4][0][0];             /* Hash new side to move    */
+  hash ^= stateKey();                             /* Hash new castling & ep   */
   if (!safe && inCheck(24 - side)) {              /* King in check after move */
     undo();                                       /* Take move back           */
     return 0;                                     /* Return illegal move      */
@@ -581,9 +584,11 @@ int search(int depth, int ply,                    /* Negamax search           */
       int oldSide = side, oldEp = ep;             /*                          */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
       int oldFifty = fifty;                       /*                          */
+      hash ^= stateKey(); ep = -1;                /* No en passant after null */
       hash ^= hashPiece[side >> 4][0][0];         /* Unhash old side to move  */
       side = 24 - side;                           /* Swap the side            */
       hash ^= hashPiece[side >> 4][0][0];         /* Hash new side to move    */
+      hash ^= stateKey();                         /* Hash castling, no ep     */
       score = -search(depth - 1 - rDepth,         /* Use reduced depth        */
                    ply+1,-beta,-beta+1, 0);       /* Negamax search           */
       side = oldSide, ep = oldEp;                 /*                          */
@@ -801,6 +806,7 @@ int inCheck(int color) {                          /* Is king in check ?       */
 /******************************************************************************/
 void setHash() {                                  /* Encode board position    */
   hash = hashPiece[side >> 4][0][0];              /* Side to move hash key    */
+  hash ^= stateKey();                             /* Castling, en passant key */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
     int pce = board[sq];                          /* Get square contents      */
@@ -810,6 +816,15 @@ void setHash() {                                  /* Encode board position    */
     if (col >= 0)                                 /* Piece is not empty       */
       hash ^= hashPiece[col][pce & 7][sq];        /* Hash piece               */
   }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
+int stateKey() {                                  /* Castling, en passant key */
+  int key = hashPiece[1][0][castle + 1];          /* Castling rights key      */
+  int pawn = 2 | side, sq = ep ^ 16;              /* Own pawn, pushed pawn sq */
+  if (ep != -1 && (board[sq - 1] == pawn ||       /* Hash en passant square   */
+      board[sq + 1] == pawn))                     /* only if a pawn of the    */
+    key ^= hashPiece[0][0][ep];                   /* side to move can capture */
+  return key;                                     /* Return state key         */
 }                                                 /*                          */
 /******************************************************************************/
 void ttStore(int key, int depth, int score,       /* Write entry to TT        */
