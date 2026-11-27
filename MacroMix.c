@@ -27,10 +27,10 @@
 #include <time.h>                                 /* Random book moves seed   */
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
-  #include "conio.h"
+  #include "conio.h"                              /* Used for inputWaiting()  */
 #else                                             /*                          */
   #include "sys/time.h"                           /* UNIX-like gettimeofday() */
-  #include "sys/select.h"
+  #include "sys/select.h"                         /*                          */
 #endif                                            /*                          */
 #ifndef ENGINE_NAME                               /*                          */
   #define ENGINE_NAME "MacroMix"                  /*                          */
@@ -101,7 +101,7 @@ TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
 int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
-int analyze;
+int analyze;                                      /*                          */
 /******************************************************************************/
 int material[] = { /* Piece weights */ 0, 0, 100, 358, 397, 631, 1217 };    /**/
 int pst[7][128] = {{ 0 },                                                   /**/
@@ -195,15 +195,17 @@ int ttProbe(int key, int depth, int alpha,        /* Retrieve move from       */
             int beta, int *score, int ply,        /* transposition table      */
             Move *move);                          /*                          */
 int getTimeMs();                                  /* Get time in ms           */
-int inputWaiting();
-int timeUp();
-int readInput(char *input, int size);
+int inputWaiting();                               /* Interrupt search         */
+int timeUp();                                     /* No more search time      */
 void printBoard();                                /* Print board to           */
 char *moveStr(Move move);                         /* Get move string          */
 char *gameStr();                                  /* Get game moves string    */
 void printResult();                               /* Print game result        */
 Move parseMove(char *moveStr);                    /* Parse move string        */
 void loadGame(char *moves);                       /* Load game from string    */
+int readInput(char *input, int size);             /* Read user input          */
+void setBoard(char *fen);                         /* Set up board position    */
+void newGame();                                   /* Start new game           */
 /******************************************************************************/
 /*                               Move generator                               */
 /*                                                                            */
@@ -489,7 +491,7 @@ void think() {                                    /* Engine move              */
     } printf("\n");                               /* Print new line           */
     } if (abs(s) > 48000) break;                  /* Stop if found mate       */
   } if (bestMove.pce == 0) return;                /* No legal move to play    */
-  if (analyze) return;
+  if (analyze) return;                            /* Analysis mode            */
   make(bestMove); printf("move ");                /* Make best last PV move   */
   printf("%s", moveStr(bestMove)); printf("\n");  /* Print best move          */
   if (cli) { printResult(); printBoard(); }       /* Print board in CLI mode  */
@@ -809,97 +811,62 @@ int getTimeMs() {                                 /* Count time spent         */
   #endif	                                      /*                          */
 }                                                 /*                          */
 /******************************************************************************/
-int inputWaiting() {
-  #ifdef WIN64
-    DWORD bytes;
-    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
-    if (PeekNamedPipe(in, NULL, 0, NULL, &bytes, NULL)) return bytes > 0;
-    return _kbhit();
-  #else
-    fd_set fds;
-    struct timeval t = { 0, 0 };
-    FD_ZERO(&fds); FD_SET(0, &fds);
-    return select(1, &fds, NULL, NULL, &t) > 0;
-  #endif
-}
+int inputWaiting() {                              /*                          */
+  #ifdef WIN64                                    /*                          */
+    DWORD bytes;                                  /*                          */
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);   /*                          */
+    if (PeekNamedPipe(in, NULL, 0, NULL,          /* While engine is          */
+        &bytes, NULL)) return bytes > 0;          /* searching listen to      */
+    return _kbhit();                              /* keyboard hit, so if any  */
+  #else                                           /* command is send to       */
+    fd_set fds;                                   /* the engine it stops      */
+    struct timeval t = { 0, 0 };                  /* searching                */
+    FD_ZERO(&fds); FD_SET(0, &fds);               /*                          */
+    return select(1, &fds, NULL, NULL, &t) > 0;   /*                          */
+  #endif                                          /*                          */
+}                                                 /*                          */
 /******************************************************************************/
-int timeUp() {
-  if (!analyze) return getTimeMs() - tick >= st;
-  if (!inputWaiting()) return 0;
-  int c = getc(stdin);
-  if (c != '.') { ungetc(c, stdin); return 1; }
-  while (c != '\n' && c != EOF) c = getc(stdin);
-  return 0;
-}
+int timeUp() {                                    /*                          */
+  if (!analyze) return getTimeMs() - tick >= st;  /*                          */
+  if (!inputWaiting()) return 0;                  /*                          */
+  int c = getc(stdin);                            /* Stop searching           */
+  if (c != '.') { ungetc(c, stdin); return 1; }   /* when time is up          */
+  while (c != '\n' && c != EOF) c = getc(stdin);  /*                          */
+  return 0;                                       /*                          */
+}                                                 /*                          */
 /******************************************************************************/
-/*                                   Output                                   */
+/*                                     I/O                                    */
 /*                                                                            */
 /******************************************************************************/
-void printBoard() {                               /* Print board to console   */
-  #ifdef WIN64                                    /* Windows ASCII version    */
-    printf("\n");                                 /* Print new line           */
-    for (int row = 0; row < 8; row++) {           /* Loop over board rows     */
-      for (int col = 0; col < 16; col++) {        /* Loop over board cols     */
-        if (col == 0)                             /* On board edge            */
-        printf(" %d  ", flip ? row + 1:8 - row);  /* Print row number         */
-        int file, rank;                           /* Flip file & rank holders */
-        if (flip) {                               /* Black's perspective view */
-          file = 8 - 1 - col;                     /* Mirror file              */
-          rank = 8 - 1 - row;                     /* Mirror rank              */
-        } else { file = col; rank = row; }        /* White's perspective view */
-        int sq = rank * 16 + file;                /* Calculate square index   */
-        if (sq & 0x88) continue;                  /* Skip offboard squares    */
+void printBoard() {                               /* Print board to console   */  
+  printf("\n");                                   /* Print new line           */
+  for (int row = 0; row < 8; row++) {             /* Loop over board rows     */
+    for (int col = 0; col < 16; col++) {          /* Loop over board cols     */
+      if (col == 0)                               /* On board edge            */
+      printf(" %d  ", flip ? row + 1:8 - row);    /* Print row number         */
+      int file, rank;                             /* Flip file & rank holders */
+      if (flip) {                                 /* Black's perspective view */
+        file = 8 - 1 - col;                       /* Mirror file              */
+        rank = 8 - 1 - row;                       /* Mirror rank              */
+      } else { file = col; rank = row; }          /* White's perspective view */
+      int sq = rank * 16 + file;                  /* Calculate square index   */
+      if (sq & 0x88) continue;                    /* Skip offboard squares    */
+      #ifdef WIN64                                /* Windows ASCII version    */
         char p[] = ".kpnbrq--KPNBRQ";             /* ASCII piece characters   */
         printf("%c ", p[board[sq] & 15]);         /* Print piece              */
-      } printf("\n");                             /* Print new line           */
-    } if (flip == 0)                              /* Print files              */
-    printf("\n    a b c d e f g h\n\n");          /* White's perspective view */
-    else printf("\n    h g f e d c b a\n\n");     /* Black's perspective view */
-  #else                                           /* Linux Unicode version    */
-    const char *pieces[] = {                      /* Unicode chess pieces     */
-      " ", "\u265a", "\u265f", "\u265e",          /* Black king, pawn, knight */
-      "\u265d", "\u265c", "\u265b", " ",          /* Bishop, rook, queen      */
-      " ", "\u2654", "\u2659", "\u2658",          /* White king, pawn, knight */
-      "\u2657", "\u2656", "\u2655"                /* Bishop, rook, queen      */
-    }; printf("\n   \u2554");                     /* Print top-left corner    */
-    for (int col = 0; col < 8; col++)             /* Loop over board cols     */
-      printf("\u2550\u2550\u2550\u2566");         /* Print top edge           */
-    printf("\b\u2557\n");                         /* Print top-right corner   */
-    for (int row = 0; row < 8; row++) {           /* Loop over board rows     */
-    printf(" %d \u2551", flip ? row+1 : 8 - row); /* Print row and left edge  */
-      for (int col = 0; col < 8; col++) {         /* Loop over board cols     */
-        int file, rank;                           /* Flip file & rank holders */
-        if (flip) {                               /* Black's perspective view */
-          file = 8 - 1 - col;                     /* Mirror file              */
-          rank = 8 - 1 - row;                     /* Mirror file              */
-        } else { file = col; rank = row; }        /* White's perspective view */
-        int sq = rank * 16 + file;                /* Calculate square index   */
-        if (sq & 0x88) continue;                  /* Skip offboard squares    */
-        int piece = board[sq] & 15;               /* Get piece code           */
-        int light = (row + col) % 2 == 0;         /* Determine square color   */
-        if (piece) {                              /* If occupied square       */
-          printf(" %s ", pieces[piece]);          /* Print centered piece     */
-        } else {                                  /* Empty square             */
-          if (light) printf("   ");               /* Print light square       */
-          else printf(" . ");                     /* Print dark square        */
-        } printf("\033[0m\u2551");                /* Reset colors and border  */
-      } printf("\n");                             /* Print new line           */
-      if (row < 7) {                              /* Check if not last row    */
-        printf("   \u2560");                      /* Print left intersection  */
-        for (int col = 0; col < 8; col++)         /* Loop over board cols     */
-          printf("\u2550\u2550\u2550\u256C");     /* Print horizontal divider */
-        printf("\b\u2563\n");                     /* Print right intersection */
-      }                                           /*                          */
-    } printf("   \u255A");                        /* Print bottom-left corner */
-    for (int col = 0; col < 8; col++)             /* Loop over board cols     */
-      printf("\u2550\u2550\u2550\u2569");         /* Print bottom edge        */
-    printf("\b\u255D\n\n");                       /* Print corner             */
-    if (flip == 0) printf(                        /* Print files              */
-      "     a   b   c   d   e   f   g   h\n\n"    /* White's perspective view */
-    ); else printf(                               /*                          */
-      "     h   g   f   e   d   c   b   a\n\n");  /* Black's perspective view */
-  #endif                                          /* End platform check       */
-}                                                 /* End printBoard function  */
+      # else                                      /* Unicode piece characters */
+        const char *pieces[] = {                  /* Unicode chess pieces     */
+          ".", "\u265a", "\u265f", "\u265e",      /* Black king, pawn, knight */
+          "\u265d", "\u265c", "\u265b", " ",      /* Bishop, rook, queen      */
+          " ", "\u2654", "\u2659", "\u2658",      /* White king, pawn, knight */
+          "\u2657", "\u2656", "\u2655"            /* Bishop, rook, queen      */
+      }; printf("%s ", pieces[board[sq] & 15]);   /* Print piece              */
+      #endif                                      /*                          */
+    } printf("\n");                               /* Print new line           */
+  } if (flip == 0)                                /* Print files              */
+  printf("\n    a b c d e f g h\n\n");            /* White's perspective view */
+  else printf("\n    h g f e d c b a\n\n");       /* Black's perspective view */
+}                                                 /*                          */
 /******************************************************************************/
 char *moveStr(Move move) {                        /* Convert move to string   */
   static char mStr[6];                            /* Move string              */
@@ -984,13 +951,83 @@ void loadGame(char *moves) {                      /* Load user game           */
   printf("Game has been loaded\n");               /* Inform user game loaded  */
 }                                                 /*                          */
 /******************************************************************************/
-/*                               CECP Protocol                                */
+int readInput(char *input, int size) {            /* Read user input          */
+  if (analyze) think();                           /* Make engine move         */
+  return fgets(input, size, stdin) != NULL;       /* Read command from stdin  */
+}                                                 /*                          */
+/******************************************************************************/
+/*                                    Init                                    */
 /*                                                                            */
 /******************************************************************************/
-int readInput(char *input, int size) {
-  if (analyze) think();
-  return fgets(input, size, stdin) != NULL;
-}
+void setBoard(char *fen) {                        /* Parse FEN                */
+  char pos[128] = "", stm = 'w';                  /* Position and side        */
+  char eps[3] = "", cas[5] = "";                  /* En passant and castling  */
+  char *pieces = "kpnbrqKPNBRQ";                  /* Chess pieces             */
+  fifty = 0;                                      /* Fifty move rule          */
+  sscanf(fen, "%127s %c %4s %2s %d",              /* Read FEN string          */
+         pos, &stm, cas, eps, &fifty);            /*                          */
+  for (int sq = 0; sq < 128; sq++)                /* Loop over board square   */
+    if (!(sq & 0x88)) board[sq] = 0;              /* Clear board squares      */
+  int sq = 0;                                     /* Reset square             */
+  for (char *c = pos; *c && sq < 128; c++) {      /* Loop over position chars */
+    char *p = strchr(pieces, *c);                 /* Get current char         */
+    if (*c == '/') sq = (sq + 15) & ~15;          /* Parse end of file        */
+    else if (*c >= '1' && *c <= '8')              /* Encountered a digit      */
+      sq += *c - '0';                             /* Parse skipped files      */
+    else if (p && !(sq & 0x88)) {                 /* Encountered a piece      */
+      int color = p - pieces < 6 ? 16 : 8;        /* Get piece color          */
+      int type = (p - pieces) % 6 + 1;            /* Get piece type           */
+      board[sq] = color | type;                   /* Set piece on board       */
+      if (type == 1) kingSq[color >> 4] = sq;     /* Init king square         */
+      sq++;                                       /* Go to next square        */
+    }                                             /*                          */
+  } side = stm == 'b' ? 16 : 8;                   /* Parse side to move       */
+  castle = (strchr(cas, 'K') ? 1 : 0) |           /* Parse castling rights    */
+           (strchr(cas, 'Q') ? 2 : 0) |           /*                          */
+           (strchr(cas, 'k') ? 4 : 0) |           /*                          */
+           (strchr(cas, 'q') ? 8 : 0);            /*                          */
+  ep = -1;                                        /* Reset en passant square  */
+  if (eps[0] >= 'a' && eps[0] <= 'h' &&           /* Parse en passant square  */
+      eps[1] >= '1' && eps[1] <= '8')             /*                          */
+    ep = (eps[0] - 'a') +                         /*                          */
+         (8 - (eps[1] - '0')) * 16;               /*                          */
+  gamePly = 0;                                    /* Reset game ply           */
+  setHash();                                      /* Hash position            */
+}                                                 /*                          */
+/******************************************************************************/
+void newGame() {                                  /* Start new game           */
+  srand(0);                                       /* Set random seed          */
+  for (int col = 0; col < 2; col++)               /* Loop over color types    */
+    for (int t = 0; t < 7; t++)                   /* Loop over piece types    */
+      for (int sq = 0; sq < 120; sq++)            /* Loop over board squares  */
+        hashPiece[col][t][sq] = rand();           /* Init random hash number  */
+  side = 8; ep = -1; castle = 15; fifty = 0;      /* Init position state      */
+  kingSq[0] = 116; kingSq[1] = 4;                 /* Init king squares        */
+  for (int sq = 0; sq < 128; sq++) {              /* Loop over board squares  */
+    board[sq] = 15;                               /* Castling bits (KQkq)     */
+  } int white[8] = {                              /* White pieces             */
+    13, 11, 12, 14, 9, 12, 11, 13                 /* R, N, B, Q, K, B, N, R   */
+  }; int i = 8; while (i--) {                     /* Loop over board files    */
+    board[i+112] = white[i];                      /* Set up white pieces      */
+    board[i+96] = 10;                             /* Set up white pawns       */
+    board[i+32] = 0; board[i+48] = 0;             /* Set up empty squares     */
+    board[i+64] = 0; board[i+80] = 0;             /* Set up empty squares     */
+    board[i+16] = 18;                             /* Set up black pawns       */
+    board[i] = board[i + 112] + 8;                /* Set up black pieces      */
+  } board[8] = 7;                                 /* Black O-O-O castling     */
+    board[12] = 3;                                /* Black both castling      */
+    board[15] = 11;                               /* Black O-O castling       */
+    board[120] = 13;                              /* White O-O-O castling     */
+    board[124] = 12;                              /* White both castling      */
+    board[127] = 14;                              /* White O-O castling       */
+    gamePly = 0;                                  /* Reset game ply           */
+    force = 0;                                    /* Reset force mode         */
+    setHash();                                    /* Hash position            */
+    if (cli) printBoard();                        /* Print board to console   */
+}                                                 /*                          */
+/******************************************************************************/
+/*                               CECP Protocol                                */
+/*                                                                            */
 /******************************************************************************/
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
@@ -999,7 +1036,7 @@ int main() {                                      /* Xboard / Winboard driver */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
   setbuf(stdout, NULL);                           /* Clear output buffer      */
-  setbuf(stdin, NULL);
+  setbuf(stdin, NULL);                            /* Clear input buffer       */
   do {                                            /* User command loop        */
     char command[2048] = { 0 };                   /* User command storage     */                 
     sscanf(input, "%2047[^\n]", command);         /* Read user command        */
@@ -1013,70 +1050,17 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("%s mode\n", cli ?  "CLI":"Xboard"); /* Print current mode       */
       continue;                                   /* Process next command     */
     } if (!strncmp(command, "protover", 8)) {     /* CECP command "protover"  */
-      printf("feature ping=1 setboard=1\n");
+      printf("feature ping=1 setboard=1\n");      /* List engine features     */
       printf("feature done=1\n");                 /* Prevent GUI delay        */
-    } if (!strncmp(command, "ping", 4)) {
-      printf("pong %s\n", command + 5); continue;
+    } if (!strncmp(command, "ping", 4)) {         /* CECP "ping" command      */
+      printf("pong %s\n", command + 5); continue; /* Respond with "pong"      */
     } if (!strcmp(command, "new")) {              /* CECP command "new"       */
-      srand(0);                                   /* Set random seed          */
-      for (int col = 0; col < 2; col++)           /* Loop over color types    */
-        for (int t = 0; t < 7; t++)               /* Loop over piece types    */
-          for (int sq = 0; sq < 120; sq++)        /* Loop over board squares  */
-            hashPiece[col][t][sq] = rand();       /* Init random hash number  */
-      side = 8; ep = -1; castle = 15; fifty = 0;  /* Init position state      */
-      kingSq[0] = 116; kingSq[1] = 4;             /* Init king squares        */
-      for (int sq = 0; sq < 128; sq++) {          /* Loop over board squares  */
-        board[sq] = 15;                           /* Castling bits (KQkq)     */
-      } int white[8] = {                          /* White pieces             */
-        13, 11, 12, 14, 9, 12, 11, 13             /* R, N, B, Q, K, B, N, R   */
-      }; int i = 8; while (i--) {                 /* Loop over board files    */
-        board[i+112] = white[i];                  /* Set up white pieces      */
-        board[i+96] = 10;                         /* Set up white pawns       */
-        board[i+32] = 0; board[i+48] = 0;         /* Set up empty squares     */
-        board[i+64] = 0; board[i+80] = 0;         /* Set up empty squares     */
-        board[i+16] = 18;                         /* Set up black pawns       */
-        board[i] = board[i + 112] + 8;            /* Set up black pieces      */
-      } board[8] = 7;                             /* Black O-O-O castling     */
-        board[12] = 3;                            /* Black both castling      */
-        board[15] = 11;                           /* Black O-O castling       */
-        board[120] = 13;                          /* White O-O-O castling     */
-        board[124] = 12;                          /* White both castling      */
-        board[127] = 14;                          /* White O-O castling       */
-        gamePly = 0;                              /* Reset game ply           */
-        force = 0;                                /* Reset force mode         */
-        setHash();                                /* Hash position            */
-        if (cli) printBoard();                    /* Print board to console   */
-        continue;                                 /* Process next command     */
-    } if (!strncmp(command, "setboard", 8)) {
-      char pos[128] = "", stm = 'w', cas[5] = "", eps[3] = "";
-      char *pieces = "kpnbrqKPNBRQ";
-      fifty = 0;
-      sscanf(command + 8, "%127s %c %4s %2s %d", pos, &stm, cas, eps, &fifty);
-      for (int sq = 0; sq < 128; sq++)
-        if (!(sq & 0x88)) board[sq] = 0;
-      int sq = 0;
-      for (char *c = pos; *c && sq < 128; c++) {
-        char *p = strchr(pieces, *c);
-        if (*c == '/') sq = (sq + 15) & ~15;
-        else if (*c >= '1' && *c <= '8') sq += *c - '0';
-        else if (p && !(sq & 0x88)) {
-          int color = p - pieces < 6 ? 16 : 8;
-          int type = (p - pieces) % 6 + 1;
-          board[sq] = color | type;
-          if (type == 1) kingSq[color >> 4] = sq;
-          sq++;
-        }
-      }
-      side = stm == 'b' ? 16 : 8;
-      castle = (strchr(cas, 'K') ? 1 : 0) | (strchr(cas, 'Q') ? 2 : 0) |
-               (strchr(cas, 'k') ? 4 : 0) | (strchr(cas, 'q') ? 8 : 0);
-      ep = -1;
-      if (eps[0] >= 'a' && eps[0] <= 'h' && eps[1] >= '1' && eps[1] <= '8')
-        ep = (eps[0] - 'a') + (8 - (eps[1] - '0')) * 16;
-      gamePly = 0;
-      setHash();
-      if (cli) printBoard();
-      continue;
+      newGame();                                  /* Start new game           */
+      continue;                                   /* Process next command     */
+    } if (!strncmp(command, "setboard", 8)) {     /* CECP "new" command       */
+      setBoard(command + 8);                      /* Set board from FEN       */
+      if (cli) printBoard();                      /* Print board in CLI mode  */
+      continue;                                   /* Process next command     */
     } if (!strncmp(command, "level", 5)) {        /* CECP command "level"     */
       float sec = 0; mps = 0; fixed = 0;          /* Reset level parameters   */
       sscanf(command, "level %d %*s %f",          /* Parse moves per session  */
@@ -1110,11 +1094,11 @@ int main() {                                      /* Xboard / Winboard driver */
     } if (!strcmp(command, "go")) {               /* Make engine move         */
       force = 0;                                  /* Leave force mode         */
       if (!analyze) think();                      /* Make engine move         */             
-      continue;
-    } if (!strcmp(command, "analyze")) {
-      analyze = 1; post = 1; continue;
-    } if (!strcmp(command, "exit")) {
-      analyze = 0; continue;
+      continue;                                   /* Process next command     */
+    } if (!strcmp(command, "analyze")) {          /* CECP "analyze" command   */
+      analyze = 1; post = 1; continue;            /* Start infinite analysis  */
+    } if (!strcmp(command, "exit")) {             /* CECP "exit" command      */
+      analyze = 0; continue;                      /* Stop infinite analysis   */
     } if (command[0] >= 'a' &&                    /*                          */
           command[0] <= 'z' &&                    /* If command is a move     */
           command[1] >= '0' &&                    /* in format "e2e4"         */
@@ -1158,11 +1142,11 @@ int main() {                                      /* Xboard / Winboard driver */
       printf("force\tedit mode\n");               /*                          */
       printf("st 5000\tfixed time\n");            /*                          */
       printf("sd 8\tfixed depth\n");              /*                          */
-      printf("post\tprint PV lines\n");           /* Command reference list   */
+      printf("post\tprint PV lines\n");           /*                          */
       printf("nopost\tthink quietly\n");          /*                          */
-      printf("go\tengine move\n");                /*                          */
-      printf("analyze\tinfinite analysis\n");
-      printf("exit\tleave analysis\n");
+      printf("go\tengine move\n");                /* Command reference list   */
+      printf("analyze\tinfinite analysis\n");     /*                          */
+      printf("exit\tstop analysis\n");            /*                          */
       printf("e2e4\tuser move\n");                /*                          */
       printf("undo\tundo move\n");                /*                          */
       printf("perft 5\tperft depth 5\n");         /*                          */
