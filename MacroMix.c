@@ -261,6 +261,7 @@ void genMoves(MList *mList, int caps) {           /* Generate moves/captures  */
              ((side == 8) ? 5 : 2)) break;        /* No extra push if not     */
         } else if (pceType == 1) {                /* Piece is a king          */
           if ((dir != 1) && (dir != -1)) break;   /* Castles only sideways    */
+          if (caps) break;                        /* No castling in captures  */
           if (dir == 1) {                         /* King side castling       */
             if (side == 8 && (castle & 1) == 0)   /* No white king side       */
               break;                              /* Stop                     */
