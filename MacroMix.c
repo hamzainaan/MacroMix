@@ -80,6 +80,7 @@ long long nodes;                                  /* Number of positions      */
 int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
+int pieceScore, sideMaterial[2];                  /* Incremental eval sums    */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -175,6 +176,8 @@ int attack(int sq, int color);                    /* Square attacked by side  */
 int make(Move move);                              /* Make move on board       */
 void undo();                                      /* Undo move on board       */
 void setSquare(int sq, int pce);                  /* Put piece on a square    */
+void updateEval(int pce, int sq, int sign);       /* Add or remove its score  */
+void initEval();                                  /* Score board from scratch */
 void perft(int d);                                /* Perft testing            */
 void think();                                     /* Play engine move         */
 void openBook();                                  /* Load opening book        */
@@ -326,11 +329,14 @@ int attack(int sq, int color) {                   /* Square attacked by color */
 /******************************************************************************/
 void setSquare(int sq, int pce) {                 /* Put piece on a square    */
   int old = board[sq];                            /* Piece leaving the square */
-  if (old)                                        /* Square was not empty     */
+  if (old) {                                      /* Square was not empty     */
     hash ^= hashPiece[old >> 4][old & 7][sq];     /* Unhash leaving piece     */
-  board[sq] = pce;                                /* Set new square contents  */
-  if (pce)                                        /* New piece on the square  */
+    updateEval(old, sq, -1);                      /* Remove its eval score    */
+  } board[sq] = pce;                              /* Set new square contents  */
+  if (pce) {                                      /* New piece on the square  */
     hash ^= hashPiece[pce >> 4][pce & 7][sq];     /* Hash arriving piece      */
+    updateEval(pce, sq, 1);                       /* Add its eval score       */
+  }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
@@ -660,9 +666,9 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
 }                                                 /*                          */
 /******************************************************************************/
 int eval() {                                      /* Static evaluation        */
-  int score = 0;                                  /* Reset static score       */
-  int matWhite = 0, matBlack = 0;                 /* White & black material   */
-  int kingWhite = 0, kingBlack = 0;               /* King squares             */
+  int score = pieceScore;                         /* Material & positional    */
+  int kingWhite = kingSq[0];                      /* White king square        */
+  int kingBlack = kingSq[1];                      /* Black king square        */
   for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
     if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
     int pce = board[sq];                          /* Get square contents      */
@@ -708,19 +714,31 @@ int eval() {                                      /* Static evaluation        */
             if (pce == 10) score += bonus;        /* Give bonus to white      */
             else score -= bonus;                  /* Give bonus to black      */
         }                                         /*                          */
-    } if (pce == 9) kingWhite = sq;               /* Remember white king      */
-    if (pce == 17) kingBlack = sq;                /* Remember black king      */
-    if (pce & 8) matWhite += material[pceType];   /* Count white material     */
-    if (pce & 16) matBlack += material[pceType];  /* Count black material     */
-    if ((pce & 8) && pceType != 1)                /* White piece but king     */
-      score += pst[pceType][sq];                  /* White positional score   */
-    if ((pce & 16) && pceType != 1)               /* Black piece but king     */
-      score -= pst[pceType][sq ^ 112];            /* Black positional score   */
-  } if (matWhite < 1350) kingWhite += 8;          /* White king in an endgame */
-  if (matBlack < 1350) kingBlack += 8;            /* Black king in an endgame */
-  score += matWhite + pst[1][kingWhite];          /* White material and king  */
-  score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
+    }                                             /*                          */
+  } if (sideMaterial[0] < 1350) kingWhite += 8;   /* White king in an endgame */
+  if (sideMaterial[1] < 1350) kingBlack += 8;     /* Black king in an endgame */
+  score += pst[1][kingWhite];                     /* White king score         */
+  score -= pst[1][kingBlack ^ 112];               /* Black king score         */
   return (side == 8) ? score : -score;            /* Side respective score    */
+}                                                 /*                          */
+/******************************************************************************/
+void updateEval(int pce, int sq, int sign) {      /* Add or remove its score  */
+  int col = pce >> 4, type = pce & 7;             /* Piece color & type       */
+  sideMaterial[col] += sign * material[type];     /* Count side material      */
+  if (type == 1) return;                          /* Kings are scored in eval */
+  if (col) { sign = -sign; sq ^= 112; }           /* Black: negate & mirror   */
+  pieceScore += sign * material[type];            /* Material score           */
+  pieceScore += sign * pst[type][sq];             /* Positional score         */
+}                                                 /*                          */
+/******************************************************************************/
+void initEval() {                                 /* Score board from scratch */
+  pieceScore = 0;                                 /* Reset piece score        */
+  sideMaterial[0] = sideMaterial[1] = 0;          /* Reset side material      */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
+    if (board[sq])                                /* Square has a piece       */
+      updateEval(board[sq], sq, 1);               /* Add its eval score       */
+  }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
 void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
@@ -1014,6 +1032,7 @@ void setBoard(char *fen) {                        /* Parse FEN                */
          (8 - (eps[1] - '0')) * 16;               /*                          */
   gamePly = 0;                                    /* Reset game ply           */
   setHash();                                      /* Hash position            */
+  initEval();                                     /* Score position           */
 }                                                 /*                          */
 /******************************************************************************/
 void newGame() {                                  /* Start new game           */
@@ -1044,6 +1063,7 @@ void newGame() {                                  /* Start new game           */
     gamePly = 0;                                  /* Reset game ply           */
     force = 0;                                    /* Reset force mode         */
     setHash();                                    /* Hash position            */
+    initEval();                                   /* Score position           */
     if (cli) printBoard();                        /* Print board to console   */
 }                                                 /*                          */
 /******************************************************************************/
