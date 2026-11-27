@@ -959,7 +959,7 @@ void printResult() {                              /* Game result              */
         printf("0-1 { Black mates }\n");          /* Black wins               */
       } else printf("1-0 { White mates }\n");     /* Otherwise white wins     */
     } else printf("1/2-1/2 { Stalemate }\n");     /* Draw by stalemate        */
-  } else if (reps() == 2) {                       /* Three fold repetition    */
+  } else if (reps() >= 2) {                       /* Three fold repetition    */
     printf("1/2-1/2 { Draw by repetition }\n");   /* Draw by repetition       */
   } else if (fifty >= 100)                        /* Fifty move rule          */
  printf("1/2-1/2 { Draw by fifty move rule }\n"); /* Draw by fifty move rule  */
