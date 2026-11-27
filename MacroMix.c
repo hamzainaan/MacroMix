@@ -83,6 +83,8 @@ long long nodes;                                  /* Number of positions      */
 int board[128], side, ep, castle, fifty, hash;    /* Board position & state   */
 int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
+int pieceScore, sideMaterial[2];                  /* Incremental eval sums    */
+int pawnBits[2][10];                              /* Pawn rank bits by file   */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -177,6 +179,9 @@ void genMoves(MList *mList, int caps);            /* Generate moves/captures  */
 int attack(int sq, int color);                    /* Square attacked by side  */
 int make(Move move);                              /* Make move on board       */
 void undo();                                      /* Undo move on board       */
+void setSquare(int sq, int pce);                  /* Put piece on a square    */
+void updateEval(int pce, int sq, int sign);       /* Add or remove its score  */
+void initEval();                                  /* Score board from scratch */
 void perft(int d);                                /* Perft testing            */
 void think();                                     /* Play engine move         */
 void openBook();                                  /* Load opening book        */
@@ -326,6 +331,18 @@ int attack(int sq, int color) {                   /* Square attacked by color */
   } return 0;                                     /* Square is not attacked   */
 }                                                 /*                          */
 /******************************************************************************/
+void setSquare(int sq, int pce) {                 /* Put piece on a square    */
+  int old = board[sq];                            /* Piece leaving the square */
+  if (old) {                                      /* Square was not empty     */
+    hash ^= hashPiece[old >> 4][old & 7][sq];     /* Unhash leaving piece     */
+    updateEval(old, sq, -1);                      /* Remove its eval score    */
+  } board[sq] = pce;                              /* Set new square contents  */
+  if (pce) {                                      /* New piece on the square  */
+    hash ^= hashPiece[pce >> 4][pce & 7][sq];     /* Hash arriving piece      */
+    updateEval(pce, sq, 1);                       /* Add its eval score       */
+  }                                               /*                          */
+}                                                 /*                          */
+/******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
   if (gamePly >= 1024) return 0;                  /* Game history is full     */
   game[gamePly].move = move;                      /* Save move into a game    */
@@ -335,9 +352,9 @@ int make(Move move) {                             /* Make move on board       */
   game[gamePly].fifty = fifty;                    /* Save fifty move count    */
   game[gamePly].hash = hash;                      /* Save hash key            */
   gamePly++;                                      /* Increment game ply       */
-  board[move.capSq] = 0;                          /* Empty captured square    */
-  board[move.src] = 0;                            /* Empty source square      */
-  board[move.dst] = move.pce;                     /* Move piece               */
+  setSquare(move.capSq, 0);                       /* Empty captured square    */
+  setSquare(move.src, 0);                         /* Empty source square      */
+  setSquare(move.dst, move.pce);                  /* Move piece               */
   if ((move.pce & 7) == 1)                        /* Piece is a king          */
     kingSq[side >> 4] = move.dst;                 /* Update king square       */
   ep = -1;                                        /* Reset en passant square  */
@@ -349,26 +366,32 @@ int make(Move move) {                             /* Make move on board       */
       (dstRank == ((side == 8) ? 4 : 3))          /* Target rank is 4th / 5th */
     ) ep = move.dst ^ 16;                         /* Set en passant square    */
     if ((move.dst >> 4) == (side == 8 ? 0 : 7)) { /* Pawn promotion           */
-      board[move.dst] = move.prom | side;         /* Promote to given piece   */
+      setSquare(move.dst, move.prom | side);      /* Promote to given piece   */
     }                                             /*                          */
   } if ((move.pce & 7) == 1 &&                    /* Piece is a king          */
      ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
     switch(move.dst) {                            /* Where king castled       */
       case 118:                                   /* Square G1                */
-        board[117] = 13; board[119] = 0; break;   /* Move rook from H1 to F1  */
+        setSquare(117, 13); setSquare(119, 0);    /* Move rook from H1 to F1  */
+        break;                                    /*                          */
       case 114:                                   /* Square C1                */
-        board[115] = 13; board[112] = 0; break;   /* Move rook from A1 to D1  */
+        setSquare(115, 13); setSquare(112, 0);    /* Move rook from A1 to D1  */
+        break;                                    /*                          */
       case 6:                                     /* Square G8                */
-        board[5] = 21; board[7] = 0; break;       /* Move rook from H8 to F8  */
+        setSquare(5, 21); setSquare(7, 0);        /* Move rook from H8 to F8  */
+        break;                                    /*                          */
       case 2:                                     /* Square C8                */
-        board[3] = 21; board[0] = 0; break;       /* Move rook from A8 to D8  */
+        setSquare(3, 21); setSquare(0, 0);        /* Move rook from A8 to D8  */
+        break;                                    /*                          */
     }                                             /*                          */
   } castle &= board[move.src + 8];                /* Update castling source   */
   castle &= board[move.dst + 8];                  /* Update castling target   */
   if (move.capPce || (move.pce & 7) == 2)         /* On capture or pawn move  */
     fifty = 0;                                    /* Reset fifty count        */
   else fifty++;                                   /* Increment fifty move     */
+  hash ^= hashPiece[side >> 4][0][0];             /* Unhash old side to move  */
   side = 24 - side;                               /* Swap the side to move    */
+  hash ^= hashPiece[side >> 4][0][0];             /* Hash new side to move    */
   if (inCheck(24 - side)) {                       /* King in check after move */
     undo();                                       /* Take move back           */
     return 0;                                     /* Return illegal move      */
@@ -383,25 +406,29 @@ void undo() {                                     /* Undo move on board       */
   ep = game[gamePly].ep;                          /* Load en passant square   */
   castle = game[gamePly].castle;                  /* Load castling rights     */
   fifty = game[gamePly].fifty;                    /* Load fifty move count    */
-  hash = game[gamePly].hash;                      /* Load hash key            */
-  board[move.dst] = 0;                            /* Empty target square      */
-  board[move.src] = move.pce;                     /* Move a piece back        */
-  board[move.capSq] = move.capPce;                /* Restore captured piece   */
+  setSquare(move.dst, 0);                         /* Empty target square      */
+  setSquare(move.src, move.pce);                  /* Move a piece back        */
+  setSquare(move.capSq, move.capPce);             /* Restore captured piece   */
   if ((move.pce & 7) == 1)                        /* Piece is a king          */
     kingSq[side >> 4] = move.src;                 /* Restore king square      */
   if ((move.pce & 7) == 1 &&                      /* Piece is a king          */
      ((move.src == 116) || (move.src == 4))) {    /* Castling move            */
     switch(move.dst) {                            /* Where king castled       */
       case 118:                                   /* Square G1                */
-        board[119] = 13; board[117] = 0; break;   /* Move rook from F1 to H1  */
+        setSquare(119, 13); setSquare(117, 0);    /* Move rook from F1 to H1  */
+        break;                                    /*                          */
       case 114:                                   /* Square C1                */
-        board[112] = 13; board[115] = 0; break;   /* Move rook from D1 to A1  */
+        setSquare(112, 13); setSquare(115, 0);    /* Move rook from D1 to A1  */
+        break;                                    /*                          */
       case 6:                                     /* Square G8                */
-        board[7] = 21; board[5] = 0; break;       /* Move rook from F8 to H8  */
+        setSquare(7, 21); setSquare(5, 0);        /* Move rook from F8 to H8  */
+        break;                                    /*                          */
       case 2:                                     /* Square C8                */
-        board[0] = 21; board[3] = 0; break;       /* Move rook from D8 to A8  */
+        setSquare(0, 21); setSquare(3, 0);        /* Move rook from D8 to A8  */
+        break;                                    /*                          */
     }                                             /*                          */
   }                                               /*                          */
+  hash = game[gamePly].hash;                      /* Load hash key            */
 }                                                 /*                          */
 /******************************************************************************/
 /*                                   Perft                                    */
@@ -514,7 +541,6 @@ int search(int depth, int ply,                    /* Negamax search           */
   if ((nodes & 1023) == 0 && bestMove.pce)        /* Check time control       */
     if (timeUp()) stop = 1;                       /* Time is up, set stop     */
   pvLength[ply] = ply;                            /* Init PV length           */
-  setHash();                                      /* Update position hash     */
   if (ply && reps()) return 0;                    /* 3 Fold repetition, draw  */
   int pvNode = (beta - alpha) > 1;                /* Distinguish PV nodes     */
   int key  = hash ^ (side == 8 ?                  /* Get position key         */
@@ -544,7 +570,9 @@ int search(int depth, int ply,                    /* Negamax search           */
       int oldSide = side, oldEp = ep;             /*                          */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
       int oldFifty = fifty;                       /*                          */
+      hash ^= hashPiece[side >> 4][0][0];         /* Unhash old side to move  */
       side = 24 - side;                           /* Swap the side            */
+      hash ^= hashPiece[side >> 4][0][0];         /* Hash new side to move    */
       score = -search(depth - 1 - rDepth,         /* Use reduced depth        */
                    ply+1,-beta,-beta+1, 0);       /* Negamax search           */
       side = oldSide, ep = oldEp;                 /*                          */
@@ -642,42 +670,25 @@ int quiesce(int ply, int alpha, int beta) {       /* Quiescence search        */
 }                                                 /*                          */
 /******************************************************************************/
 int eval() {                                      /* Static evaluation        */
-  int score = 0;                                  /* Reset static score       */
-  int matWhite = 0, matBlack = 0;                 /* White & black material   */
-  int kingWhite = 0, kingBlack = 0;               /* King squares             */
-  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
-    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard square     */
-    int pce = board[sq];                          /* Get square contents      */
-    int pceType = pce & 7;                        /* Extract piece type       */
-    if (pceType == 2) {                           /* Pawn structure scoring   */
-        int oPawn = pce ^ 24;                     /* Enemy pawn               */
-        int dir = (pce == 10) ? -16 : 16;         /* Pawn move direction      */
-        int file = sq & 7;                        /* Pawn file                */
-        int rank = sq >> 4;                       /* Pawn rank                */
-        int isolated = 1;                         /* Isolated pawn flag       */
-        int passed = 1;                           /* Passed pawn flag         */
-        int doubled = 0;                          /* Doubled pawn flag        */
-        for (int r = 0; r < 8; r++) {             /* Loop over adjacent file  */
-            if (file > 0 &&                       /* Not A-file               */
-              board[r * 16 + file - 1] == pce)    /* Friendly pawn on left    */
-              isolated = 0;                       /* Pawn is not isolated     */
-            if (file < 7 &&                       /* Not H-file               */
-              board[r * 16 + file + 1] == pce)    /* Friendly pawn on right   */
-              isolated = 0;                       /* Pawn is not isolated     */
-        } for (int r = rank + (dir < 0 ? -1 : 1); /* Check pawns ahead        */
-             r >= 0 && r < 8;                     /* on same and              */
-             r += (dir < 0 ? -1 : 1)) {           /* adjacent files           */
-            if (board[r * 16 + file] == oPawn)    /* Enemy pawn on same file  */
-              passed = 0;                         /* Pawn is not passed       */
-            if (board[r * 16 + file] == pce)      /* Own pawn on same file    */
-              doubled = 1;                        /* Pawn is doubled          */
-            if (file > 0 &&                       /* Not A-file               */
-              board[r * 16 + file - 1] == oPawn)  /* Enemy pawn left          */
-              passed = 0;                         /* Pawn is not passed       */
-            if (file < 7 &&                       /* Not H-file               */
-              board[r * 16 + file + 1] == oPawn)  /* Enemy pawn right         */
-              passed = 0;                         /* Pawn is not passed       */
-        } if (doubled) {                          /* Pawn is doubled          */
+  int score = pieceScore;                         /* Material & positional    */
+  int kingWhite = kingSq[0];                      /* White king square        */
+  int kingBlack = kingSq[1];                      /* Black king square        */
+  for (int col = 0; col < 2; col++)               /* Loop over both colors    */
+    for (int file = 1; file < 9; file++)          /* Loop over padded files   */
+      for (int rank = 1; rank < 7; rank++) {      /* Loop over pawn ranks     */
+        if (!(pawnBits[col][file] >> rank & 1))   /* No pawn on the square    */
+          continue;                               /* Skip to next square      */
+        int pce = col ? 18 : 10;                  /* Pawn of this color       */
+        int *own = pawnBits[col];                 /* Own pawns by file        */
+        int *opp = pawnBits[col ^ 1];             /* Enemy pawns by file      */
+        int ahead = col ? 255 << (rank + 1)       /* Ranks ahead of the pawn  */
+                        : (1 << rank) - 1;        /* for black or for white   */
+        int isolated = !own[file - 1] &&          /* No own pawns on          */
+                       !own[file + 1];            /* adjacent files           */
+        int doubled = own[file] & ahead;          /* Own pawn ahead on file   */
+        int passed = !((opp[file - 1] | opp[file] /* No enemy pawns ahead on  */
+                      | opp[file + 1]) & ahead);  /* same or adjacent files   */
+        if (doubled) {                            /* Pawn is doubled          */
             if (pce == 10) score -= 9;            /* Give penalty to white    */
             else score += 9;                      /* Give penalty to black    */
         } if (isolated) {                         /* Pawn is isolated         */
@@ -690,19 +701,35 @@ int eval() {                                      /* Static evaluation        */
             if (pce == 10) score += bonus;        /* Give bonus to white      */
             else score -= bonus;                  /* Give bonus to black      */
         }                                         /*                          */
-    } if (pce == 9) kingWhite = sq;               /* Remember white king      */
-    if (pce == 17) kingBlack = sq;                /* Remember black king      */
-    if (pce & 8) matWhite += material[pceType];   /* Count white material     */
-    if (pce & 16) matBlack += material[pceType];  /* Count black material     */
-    if ((pce & 8) && pceType != 1)                /* White piece but king     */
-      score += pst[pceType][sq];                  /* White positional score   */
-    if ((pce & 16) && pceType != 1)               /* Black piece but king     */
-      score -= pst[pceType][sq ^ 112];            /* Black positional score   */
-  } if (matWhite < 1350) kingWhite += 8;          /* White king in an endgame */
-  if (matBlack < 1350) kingBlack += 8;            /* Black king in an endgame */
-  score += matWhite + pst[1][kingWhite];          /* White material and king  */
-  score -= matBlack + pst[1][kingBlack ^ 112];    /* Black material and king  */
+      }                                           /*                          */
+  if (sideMaterial[0] < 1350) kingWhite += 8;     /* White king in an endgame */
+  if (sideMaterial[1] < 1350) kingBlack += 8;     /* Black king in an endgame */
+  score += pst[1][kingWhite];                     /* White king score         */
+  score -= pst[1][kingBlack ^ 112];               /* Black king score         */
   return (side == 8) ? score : -score;            /* Side respective score    */
+}                                                 /*                          */
+/******************************************************************************/
+void updateEval(int pce, int sq, int sign) {      /* Add or remove its score  */
+  int col = pce >> 4, type = pce & 7;             /* Piece color & type       */
+  sideMaterial[col] += sign * material[type];     /* Count side material      */
+  if (type == 2)                                  /* Piece is a pawn          */
+    pawnBits[col][(sq & 7) + 1] ^=                /* Toggle its rank bit      */
+      1 << (sq >> 4);                             /* on its padded file       */
+  if (type == 1) return;                          /* Kings are scored in eval */
+  if (col) { sign = -sign; sq ^= 112; }           /* Black: negate & mirror   */
+  pieceScore += sign * material[type];            /* Material score           */
+  pieceScore += sign * pst[type][sq];             /* Positional score         */
+}                                                 /*                          */
+/******************************************************************************/
+void initEval() {                                 /* Score board from scratch */
+  pieceScore = 0;                                 /* Reset piece score        */
+  sideMaterial[0] = sideMaterial[1] = 0;          /* Reset side material      */
+  memset(pawnBits, 0, sizeof(pawnBits));          /* Reset pawn rank bits     */
+  for (int sq = 0; sq < 120; sq++) {              /* Loop over board squares  */
+    if (sq & 0x88) { sq += 7; continue; }         /* Skip offboard squares    */
+    if (board[sq])                                /* Square has a piece       */
+      updateEval(board[sq], sq, 1);               /* Add its eval score       */
+  }                                               /*                          */
 }                                                 /*                          */
 /******************************************************************************/
 void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
@@ -996,6 +1023,7 @@ void setBoard(char *fen) {                        /* Parse FEN                */
          (8 - (eps[1] - '0')) * 16;               /*                          */
   gamePly = 0;                                    /* Reset game ply           */
   setHash();                                      /* Hash position            */
+  initEval();                                     /* Score position           */
 }                                                 /*                          */
 /******************************************************************************/
 void newGame() {                                  /* Start new game           */
@@ -1026,6 +1054,7 @@ void newGame() {                                  /* Start new game           */
     gamePly = 0;                                  /* Reset game ply           */
     force = 0;                                    /* Reset force mode         */
     setHash();                                    /* Hash position            */
+    initEval();                                   /* Score position           */
     if (cli) printBoard();                        /* Print board to console   */
 }                                                 /*                          */
 /******************************************************************************/
