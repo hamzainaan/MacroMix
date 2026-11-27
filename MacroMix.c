@@ -1168,9 +1168,9 @@ int main() {                                      /* Xboard / Winboard driver */
       if (st > ms / 2) st = ms / 2;               /* Keep safety time margin  */
       sd = 63; continue;                          /* "Infinite" search depth  */
     } if (!strcmp(command, "white")) {            /* CECP command "white"     */
-      force = 0; side = 8; continue;              /* Computer plays white     */
+      force = 0; side = 8; setHash(); continue;   /* Computer plays white     */
     } if (!strcmp(command, "black")) {            /* CECP command "black"     */
-      force = 0; side = 16; continue;             /* Computer plays black     */
+      force = 0; side = 16; setHash(); continue;  /* Computer plays black     */
     } if (!strcmp(command, "force")) {            /* CECP command "force"     */
       force = 1; continue;                        /* Computer plays neither   */
     } if (!strncmp(command, "st", 2)) {           /* CECP command "st"        */
