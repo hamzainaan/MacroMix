@@ -82,6 +82,8 @@ int hashPiece[2][7][120];                         /* Random hash numbers      */
 int kingSq[2];                                    /* King squares by color    */
 int pieceScore, sideMaterial[2];                  /* Incremental eval sums    */
 int pawnBits[2][10];                              /* Pawn rank bits by file   */
+int lines[240];                                   /* Deltas on queen lines    */
+int noCheck;                                      /* Hint: side not in check  */
 /******************************************************************************/
 int offsets[7][8] = {                             /* Piece move offsets       */
   { 0 },                                          /*                          */
@@ -342,6 +344,12 @@ void setSquare(int sq, int pce) {                 /* Put piece on a square    */
 }                                                 /*                          */
 /******************************************************************************/
 int make(Move move) {                             /* Make move on board       */
+  int king = kingSq[side >> 4];                   /* Own king square          */
+  int safe = noCheck &&                           /* Not in check before move */
+             (move.pce & 7) != 1 &&               /* Piece is not a king      */
+             move.capSq == move.dst &&            /* No en passant capture    */
+             !lines[move.src - king + 119];       /* Not on a line with king  */
+  noCheck = 0;                                    /* Use the hint only once   */
   if (gamePly >= 1024) return 0;                  /* Game history is full     */
   game[gamePly].move = move;                      /* Save move into a game    */
   game[gamePly].side = side;                      /* Save side to move        */
@@ -390,7 +398,7 @@ int make(Move move) {                             /* Make move on board       */
   hash ^= hashPiece[side >> 4][0][0];             /* Unhash old side to move  */
   side = 24 - side;                               /* Swap the side to move    */
   hash ^= hashPiece[side >> 4][0][0];             /* Hash new side to move    */
-  if (inCheck(24 - side)) {                       /* King in check after move */
+  if (!safe && inCheck(24 - side)) {              /* King in check after move */
     undo();                                       /* Take move back           */
     return 0;                                     /* Return illegal move      */
   }                                               /*                          */
@@ -584,6 +592,7 @@ int search(int depth, int ply,                    /* Negamax search           */
   for (int i = 0; i < mList.count; i++) {         /* Loop over move list      */  
     pickMove(&mList, i);                          /* Bring best move forward  */
     Move move = mList.moves[i];                   /* Get current move         */
+    noCheck = !check;                             /* Hint for legality test   */
     if (make(move) == 0) continue;                /* Make move, skip illegals */
     if (legalMoves == 0)                          /* First move               */
       score = -search(depth-1, ply+1,             /* Full window search       */
@@ -1064,6 +1073,9 @@ void newGame() {                                  /* Start new game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
+  for (int d = 0; d < 8; d++)                     /* Loop over queen offsets  */
+    for (int n = 1; n < 8; n++)                   /* Loop over ray distances  */
+      lines[offsets[6][d] * n + 119] = 1;         /* Mark square delta        */
   printf("%s by %s\n", ENGINE, ENGINE_AUTHOR);    /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
