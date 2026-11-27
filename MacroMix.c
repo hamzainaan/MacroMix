@@ -673,7 +673,9 @@ int eval() {                                      /* Static evaluation        */
   int kingBlack = kingSq[1];                      /* Black king square        */
   for (int col = 0; col < 2; col++)               /* Loop over both colors    */
     for (int file = 1; file < 9; file++)          /* Loop over padded files   */
-      for (int rank = 1; rank < 7; rank++) {      /* Loop over pawn ranks     */
+      for (int rank = 1;                          /* Loop over pawn ranks     */
+           rank < 7 && pawnBits[col][file];       /* on files that have pawns */
+           rank++) {                              /*                          */
         if (!(pawnBits[col][file] >> rank & 1))   /* No pawn on the square    */
           continue;                               /* Skip to next square      */
         int pce = col ? 18 : 10;                  /* Pawn of this color       */
