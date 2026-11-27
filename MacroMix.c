@@ -1076,6 +1076,9 @@ void newGame() {                                  /* Start new game           */
 int main() {                                      /* Xboard / Winboard driver */
   signal(SIGINT, SIG_IGN);                        /* Ignore INTERRUPT signal  */
   openBook();                                     /* Load opening book        */
+  for (int d = 0; d < 8; d++)                     /* Loop over queen offsets  */
+    for (int n = 1; n < 8; n++)                   /* Loop over ray distances  */
+      lines[offsets[6][d] * n + 119] = 1;         /* Mark square delta        */
   printf("MacroMix, v%s by CMK\n", VERSION);      /* Engine info for GUI      */
   printf("Type \"help\" if stuck\n");             /* Help message             */
   char input[2048] = "new";                       /* Run "new" to init engine */
