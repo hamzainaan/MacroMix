@@ -37,6 +37,7 @@
 #include <string.h>                               /* String parsing           */
 #include <signal.h>                               /* Preventing interrupt     */
 #include <time.h>                                 /* Random book moves seed   */
+#include <math.h>
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
   #include "conio.h"                              /* Used for inputWaiting()  */
@@ -610,10 +611,17 @@ int search(int depth, int ply,                    /* Negamax search           */
       score = -search(depth-1, ply+1,             /* Full window search       */
                       -beta, -alpha, 1);          /*                          */
     else {                                        /* Other moves              */
-        int r = depth >= 3 && legalMoves >= 3 &&  /* Reduce late quiet moves  */
+        int quiet =                               /* Reduce late quiet moves  */
                 check == 0 && move.prom == 0 &&   /* when not in check, not   */
                 move.score < 800000000 &&         /* TT/PV, capture, killer,  */
                 inCheck(side) == 0;               /* or a checking move       */
+        int r = 0;
+        if (quiet && depth >= 3 && legalMoves >= 2) {
+          r = (int)(0.75 + log(depth) * log(legalMoves + 1) / 2.25);
+          if (pvNode && r > 0) r--;
+          if (r > depth - 2) r = depth - 2;
+          if (r < 0) r = 0;
+        }
         score = -search(depth-1-r, ply+1,         /* PVS null window search   */
                         -alpha-1, -alpha, 1);     /*                          */
         if (r && score > alpha)                   /* Reduced move fails high  */

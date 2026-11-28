@@ -6,7 +6,7 @@ TARGET   = MacroMix
 all: $(TARGET)
 
 $(TARGET): $(SRC) Makefile
-	$(CC) $(CFLAGS) $(SRC) -o $@
+	$(CC) $(CFLAGS) $(SRC) -o $@ -lm
 
 clean:
 	rm -f $(TARGET)
