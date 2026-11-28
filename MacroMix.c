@@ -104,7 +104,7 @@ Move pvTable[64][64];                             /* Triangular PV table      */
 int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 Move bestMove;                                    /* Best move to play        */
-#define TT_SIZE (1 << 16)                         /* Transposition table size */
+#define TT_SIZE (1 << 18)                         /* Transposition table size */
 TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
