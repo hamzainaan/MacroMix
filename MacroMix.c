@@ -581,7 +581,7 @@ int search(int depth, int ply,                    /* Negamax search           */
       if (pce && pceType > 2 && (pce & side)) {   /* Pieces of side to move   */
         matScore += material[pceType];            /* Count all but pawns      */
       }                                           /*                          */
-    } int rDepth = (matScore > 1500) ? 2 : 1;     /* Calculat reduce depth    */
+    } int rDepth = 3 + depth / 6;                 /* Calculat reduce depth    */
     if (depth > rDepth && matScore > 1300) {      /* Null move threshold      */
       int oldSide = side, oldEp = ep;             /*                          */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
