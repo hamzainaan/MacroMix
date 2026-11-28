@@ -752,13 +752,14 @@ void initEval() {                                 /* Score board from scratch */
 }                                                 /*                          */
 /******************************************************************************/
 void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
-  int count = mList->count;                       /* Move list length         */
+  int count = mList->count, best = mv1;           /* Move list length         */
   for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
-    if (mList->moves[mv1].score <                 /* Current score            */
-        mList->moves[mv2].score) {                /* Less than next score     */
+    if (mList->moves[best].score <                /* Current score            */
+        mList->moves[mv2].score) best = mv2;      /* Less than next score     */
+    if (mv2 == count - 1 && best != mv1) {
       Move temp = mList->moves[mv1];              /* Create temp move         */
-      mList->moves[mv1] = mList->moves[mv2];      /* Higher score goes first  */
-      mList->moves[mv2] = temp;                   /* Lower score goes after   */
+      mList->moves[mv1] = mList->moves[best];     /* Higher score goes first  */
+      mList->moves[best] = temp;                  /* Lower score goes after   */
     }                                             /*                          */
   }                                               /*                          */
 }                                                 /*                          */
