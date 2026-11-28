@@ -38,7 +38,7 @@
 #include <string.h>                               /* String parsing           */
 #include <signal.h>                               /* Preventing interrupt     */
 #include <time.h>                                 /* Random book moves seed   */
-#include <math.h>
+#include <math.h>                                 /* Function log()           */
 #ifdef WIN64                                      /*                          */
   #include "windows.h"                            /* WINDOWS GetTickCount()   */
   #include "conio.h"                              /* Used for inputWaiting()  */
@@ -568,14 +568,14 @@ int search(int depth, int ply,                    /* Negamax search           */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
-  int staticEval = check ? -50000 : eval();
+  int staticEval = check ? -50000 : eval();       /* Static score, once       */
   if (pvNode == 0 && check == 0 && ply &&         /* Reverse futility pruning */
       depth <= 3 && abs(beta) < 48000) {          /* at shallow non-PV nodes  */
     if (staticEval - 120 * depth >= beta)         /* Static score far above   */
       return beta;                                /* beta, prune the node     */
   }                                               /*                          */
   if (check == 0 && ply && null &&                /* Null move pruning        */
-      staticEval >= beta) {
+      staticEval >= beta) {                       /* when score reaches beta  */
     int matScore = 0;                             /* Material score           */
     for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
       if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
@@ -616,17 +616,19 @@ int search(int depth, int ply,                    /* Negamax search           */
                 check == 0 && move.prom == 0 &&   /* when not in check, not   */
                 move.score < 800000000 &&         /* TT/PV, capture, killer,  */
                 inCheck(side) == 0;               /* or a checking move       */
-        if (quiet && !pvNode && depth <= 3 &&
-            legalMoves >= 3 + depth * depth) {
-          undo(); legalMoves++; continue;
-        }
-        int r = 0;
-        if (quiet && depth >= 3 && legalMoves >= 2) {
-          r = (int)(0.75 + log(depth) * log(legalMoves + 1) / 2.25);
-          if (pvNode && r > 0) r--;
-          if (r > depth - 2) r = depth - 2;
-          if (r < 0) r = 0;
-        }
+        if (quiet && !pvNode && depth <= 3 &&     /* Late move pruning at     */
+            legalMoves >= 3 + depth * depth) {    /* shallow non-PV nodes     */
+          undo(); legalMoves++; continue;         /* Skip late quiet move     */
+        }                                         /*                          */
+        int r = 0;                                /* Late move reduction      */
+        if (quiet && depth >= 3 &&                /* for quiet moves only     */
+            legalMoves >= 2) {                    /*                          */
+          r = (int)(0.75 + log(depth) *           /* Grows with log of depth  */
+              log(legalMoves + 1) / 2.25);        /* and log of move count    */
+          if (pvNode && r > 0) r--;               /* Reduce less at PV nodes  */
+          if (r > depth - 2) r = depth - 2;       /* Keep at least one ply    */
+          if (r < 0) r = 0;                       /* No negative reduction    */
+        }                                         /*                          */
         score = -search(depth-1-r, ply+1,         /* PVS null window search   */
                         -alpha-1, -alpha, 1);     /*                          */
         if (r && score > alpha)                   /* Reduced move fails high  */
@@ -771,7 +773,7 @@ void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
   for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
     if (mList->moves[best].score <                /* Best score so far        */
         mList->moves[mv2].score) best = mv2;      /* Less than next score     */
-    if (mv2 == count - 1 && best != mv1) {
+    if (mv2 == count - 1 && best != mv1) {        /* Swap once at scan end   */
       Move temp = mList->moves[mv1];              /* Create temp move         */
       mList->moves[mv1] = mList->moves[best];     /* Higher score goes first  */
       mList->moves[best] = temp;                  /* Lower score goes after   */
