@@ -615,6 +615,10 @@ int search(int depth, int ply,                    /* Negamax search           */
                 check == 0 && move.prom == 0 &&   /* when not in check, not   */
                 move.score < 800000000 &&         /* TT/PV, capture, killer,  */
                 inCheck(side) == 0;               /* or a checking move       */
+        if (quiet && !pvNode && depth <= 3 &&
+            legalMoves >= 3 + depth * depth) {
+          undo(); legalMoves++; continue;
+        }
         int r = 0;
         if (quiet && depth >= 3 && legalMoves >= 2) {
           r = (int)(0.75 + log(depth) * log(legalMoves + 1) / 2.25);
