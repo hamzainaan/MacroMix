@@ -576,14 +576,13 @@ int search(int depth, int ply,                    /* Negamax search           */
   }                                               /*                          */
   if (check == 0 && ply && null &&                /* Null move pruning        */
       staticEval >= beta) {                       /* when score reaches beta  */
-    int matScore = 0;                             /* Material score           */
-    for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
-      if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
-      int pce = board[sq], pceType = pce & 7;     /* Get piece. extract type  */
-      if (pce && pceType > 2 && (pce & side)) {   /* Pieces of side to move   */
-        matScore += material[pceType];            /* Count all but pawns      */
-      }                                           /*                          */
-    } int rDepth = 3 + depth / 6;                 /* Calculat reduce depth    */
+    int col = side >> 4, pawns = 0;               /* Side color, pawn count   */
+    for (int file = 1; file < 9; file++)          /* Loop over padded files   */
+      for (int bits = pawnBits[col][file];        /* Own pawn rank bits       */
+           bits; bits &= bits - 1) pawns++;       /* Count pawns on the file  */
+    int matScore = sideMaterial[col] -            /* Material score           */
+                   pawns * material[2];           /* Count all but pawns      */
+    int rDepth = 3 + depth / 6;                   /* Calculat reduce depth    */
     if (depth > rDepth && matScore > 1300) {      /* Null move threshold      */
       int oldSide = side, oldEp = ep;             /*                          */
       int oldCastle = castle, oldHash = hash;     /* Preserve position state  */
