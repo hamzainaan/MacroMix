@@ -14,10 +14,11 @@
 /* - Negamax with alpha-beta pruning                                          */
 /* - Principal variation search                                               */
 /* - Null move pruning                                                        */
-/* - Late move reductions                                                     */
+/* - Logarithmic late move reductions                                         */
+/* - Late move pruning                                                        */
 /* - Reverse futility pruning                                                 */
 /* - Check extension                                                          */
-/* - Transposition table (~1MB) with Zobrist hashing                          */
+/* - Transposition table (~11MB) with Zobrist hashing                         */
 /* - Repetition & fifty move rule detection                                   */
 /* - Quiescence search with delta pruning                                     */
 /* - Simplified evaluation function                                           */
@@ -106,7 +107,7 @@ int histScores[15][128];                          /* History move ordering    */
 Move killMoves[2][64];                            /* Killer move ordering     */
 Move bestMove;                                    /* Best move to play        */
 #define TT_SIZE (1 << 18)                         /* Transposition table size */
-TTEntry tt[TT_SIZE];                              /* ~1mb transposition table */
+TTEntry tt[TT_SIZE];                              /* ~11mb TT, 2^18 entries   */
 /******************************************************************************/
 int force, tick, stop, sd = 63, st = 1000, fixed; /* CECP control variables   */
 int flip, cli = 1, post = 0, mps, inc, lag = 50;  /*                          */
@@ -611,7 +612,7 @@ int search(int depth, int ply,                    /* Negamax search           */
       score = -search(depth-1, ply+1,             /* Full window search       */
                       -beta, -alpha, 1);          /*                          */
     else {                                        /* Other moves              */
-        int quiet =                               /* Reduce late quiet moves  */
+        int quiet =                               /* Quiet move flag set      */
                 check == 0 && move.prom == 0 &&   /* when not in check, not   */
                 move.score < 800000000 &&         /* TT/PV, capture, killer,  */
                 inCheck(side) == 0;               /* or a checking move       */
@@ -766,9 +767,9 @@ void initEval() {                                 /* Score board from scratch */
 }                                                 /*                          */
 /******************************************************************************/
 void pickMove(MList *mList, int mv1) {            /* Pick best remaining move */
-  int count = mList->count, best = mv1;           /* Move list length         */
+  int count = mList->count, best = mv1;           /* List length, best index  */
   for (int mv2 = mv1 + 1; mv2 < count; mv2++) {   /* Loop over next moves     */
-    if (mList->moves[best].score <                /* Current score            */
+    if (mList->moves[best].score <                /* Best score so far        */
         mList->moves[mv2].score) best = mv2;      /* Less than next score     */
     if (mv2 == count - 1 && best != mv1) {
       Move temp = mList->moves[mv1];              /* Create temp move         */
