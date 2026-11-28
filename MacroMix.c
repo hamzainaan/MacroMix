@@ -566,12 +566,14 @@ int search(int depth, int ply,                    /* Negamax search           */
   if (gamePly >= 1022) return eval();             /* Too deep, evaluate       */
   int check = inCheck(side);                      /* King in check flag       */
   if (check) depth++;                             /* King in check, go deeper */  
+  int staticEval = check ? -50000 : eval();
   if (pvNode == 0 && check == 0 && ply &&         /* Reverse futility pruning */
       depth <= 3 && abs(beta) < 48000) {          /* at shallow non-PV nodes  */
-    if (eval() - 120 * depth >= beta)             /* Static score far above   */
+    if (staticEval - 120 * depth >= beta)         /* Static score far above   */
       return beta;                                /* beta, prune the node     */
   }                                               /*                          */
-  if (check == 0 && ply && null) {                /* Null move pruning        */
+  if (check == 0 && ply && null &&                /* Null move pruning        */
+      staticEval >= beta) {
     int matScore = 0;                             /* Material score           */
     for (int sq = 0; sq < 120; sq++) {            /* Loop over board squares  */
       if (sq & 0x88) { sq += 7; continue; }       /* Skip offboard square     */
